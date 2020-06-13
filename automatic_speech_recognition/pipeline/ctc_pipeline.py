@@ -35,13 +35,11 @@ class CTCPipeline(Pipeline):
                  decoder: decoder.Decoder,
                  gpus: List[str] = None):
         self._alphabet = alphabet
-        self._model_cpu = model
         self._optimizer = optimizer
         self._decoder = decoder
         self._features_extractor = features_extractor
         self._gpus = gpus
         self._model = model
-        self._just_processed_lengths = None
         # self._model = self.distribute_model(model, gpus) if gpus else model
 
     @property
@@ -54,7 +52,7 @@ class CTCPipeline(Pipeline):
 
     @property
     def model(self) -> keras.Model:
-        return self._model_cpu
+        return self._model
 
     @property
     def decoder(self) -> decoder.Decoder:
@@ -69,16 +67,24 @@ class CTCPipeline(Pipeline):
         if is_extracted:  # then just align features
             features = FeaturesExtractor.align(data)
         else:
-            features, feature_lengths = self._features_extractor(data, return_lengths=True)
+            features, feature_lengths = self._features_extractor(
+                data, return_lengths=True)
         features = augmentation(features) if augmentation else features
+        feature_lengths = np.array(feature_lengths)
+
         labels = self._alphabet.get_batch_labels(transcripts)
+        label_lengths = np.array(
+            [len(transcript) for transcript in transcripts])
+
+        self.feature_lengths = feature_lengths
+        self.label_lengths = label_lengths
 
         return features, labels
 
-    def compile_model(self):
+    def compile_model(self, **kwargs):
         """ The compiled model means the model configured for training. """
         loss = self.get_loss()
-        self._model.compile(self._optimizer, loss, run_eagerly=True)
+        self._model.compile(self._optimizer, loss, run_eagerly=True, **kwargs)
         logger.info("Model is successfully compiled")
 
     def fit(self,
@@ -88,9 +94,11 @@ class CTCPipeline(Pipeline):
             prepared_features: bool = False,
             **kwargs) -> keras.callbacks.History:
         """ Get ready data, compile and train a model. """
-        dataset = self.wrap_preprocess(dataset, prepared_features, augmentation)
+        dataset = self.wrap_preprocess(
+            dataset, prepared_features, augmentation)
         if dev_dataset is not None:
-            dev_dataset = self.wrap_preprocess(dev_dataset, prepared_features, augmentation)
+            dev_dataset = self.wrap_preprocess(
+                dev_dataset, prepared_features, augmentation)
         if not self._model.optimizer:  # a loss function and an optimizer
             self.compile_model()  # have to be set before the training
         return self._model.fit(dataset, validation_data=dev_dataset, **kwargs)
@@ -115,11 +123,12 @@ class CTCPipeline(Pipeline):
         def preprocess(get_batch):
             def get_prep_batch(index: int):
                 batch = get_batch(index)
-                preprocessed = self.preprocess(batch, is_extracted, augmentation)
+                preprocessed = self.preprocess(
+                    batch, is_extracted, augmentation)
                 return preprocessed
 
             return get_prep_batch
-        
+
         wrapped_dataset = copy.deepcopy(dataset)
         wrapped_dataset.get_batch = preprocess(dataset.get_batch)
         return wrapped_dataset
@@ -157,25 +166,24 @@ class CTCPipeline(Pipeline):
     def get_loss(self) -> Callable:
         """ The CTC loss using TensorFlow's `ctc_loss`. """
         def ctc_loss(labels, logits, label_lengths, logit_lengths):
-            return tf.nn.ctc_loss(labels, 
-                                  logits, 
-                                  label_lengths, 
-                                  logit_lengths, 
-                                  logits_time_major=False, 
+            return tf.nn.ctc_loss(labels,
+                                  logits,
+                                  label_lengths,
+                                  logit_lengths,
+                                  logits_time_major=False,
                                   blank_index=self.alphabet.blank_token)
         wrapped_ctc = tf.function(ctc_loss, input_signature=(
             tf.TensorSpec(shape=[None, None], dtype=tf.int32),
-            tf.TensorSpec(shape=[None, None, self.alphabet.size], dtype=tf.float32),
+            tf.TensorSpec(
+                shape=[None, None, self.alphabet.size], dtype=tf.float32),
             tf.TensorSpec(shape=[None], dtype=tf.int32),
             tf.TensorSpec(shape=[None], dtype=tf.int32)
         ))
-        
-        def mean_ctc_loss(labels, logits):
-            label_lengths = tf.math.count_nonzero(labels != self.alphabet.blank_token, axis=1)
-            logit_lengths = tf.math.count_nonzero(logits._keras_mask, axis=1)
-            return tf.reduce_mean(wrapped_ctc(tf.cast(labels, tf.int32), 
-                                              tf.cast(logits, tf.float32), 
-                                              tf.cast(label_lengths, tf.int32),
-                                              tf.cast(logit_lengths, tf.int32)))
 
+        def mean_ctc_loss(labels, logits):
+            return tf.reduce_mean(
+                wrapped_ctc(tf.cast(labels, tf.int32),
+                            tf.cast(logits, tf.float32),
+                            tf.cast(self.label_lengths, tf.int32),
+                            tf.cast(self.feature_lengths, tf.int32)))
         return mean_ctc_loss

@@ -136,8 +136,8 @@ def profile(function_name: str):
             print(f"Function {function_name} call invoked")
             start_time = time.time()
             res = func(*args, **kwargs)
-            print(f"Fucntion {function_name} call ended in {time.time() - start_time}")
-            
+            print(f"Fucntion {function_name} call ended "
+                  f"in {time.time() - start_time}")
             return res
         return wrapper
     return decorator
