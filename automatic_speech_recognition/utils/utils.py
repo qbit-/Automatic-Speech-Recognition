@@ -3,9 +3,9 @@ import pickle
 import logging
 from functools import reduce
 from logging import Logger
-from typing import Any
+from typing import Any, Tuple
 import numpy as np
-from scipy.io import wavfile
+import librosa
 from tensorflow import keras
 from google.cloud import storage
 import tensorflow as tf
@@ -46,11 +46,13 @@ def maybe_download_from_bucket(bucket_name: str, remote_path: str, local_path: s
     download_from_bucket(bucket_name, remote_path, local_path)
 
 
-def read_audio(file_path: str):
-    """ Read already prepared features from the store. """
-    audio = tf.io.read_file(file_path)
-    waveform = tf.audio.decode_wav(audio)
-    return 16000, waveform
+def read_audio(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Read audiofile to np.ndarray of np.float32 numbers,
+    normalized in between [-1, 1]
+    """
+    audio, sample_rate = librosa.load(file_path, sr=None)
+    return audio, sample_rate
 
 
 def calculate_units(model: keras.Model) -> int:
@@ -107,28 +109,6 @@ def load_graph_from_gfile(gfile_path):
                     n.attr["value"].tensor)
     return wts, gr
 
-
-def create_overlapping_windows(batch_x, num_channels, context=9, return_stacked=True):
-    batch_size = tf.shape(input=batch_x)[0]
-    window_width = 2 * context + 1
-
-    # Create a constant convolution filter using an identity matrix, so that the
-    # convolution returns patches of the input tensor as is, and we can create
-    # overlapping windows over the MFCCs.
-    eye_filter = tf.constant(np.eye(window_width * num_channels)
-                             .reshape(window_width, num_channels, window_width * num_channels),
-                             tf.float32)  # pylint: disable=bad-continuation
-
-    # Create overlapping windows
-    batch_x = tf.nn.conv1d(input=batch_x, filters=eye_filter, stride=1, padding='SAME')
-
-    # Remove dummy depth dimension and reshape into [batch_size, n_windows, window_width, n_input]
-    if return_stacked:
-        batch_x = tf.reshape(batch_x, [batch_size, -1, window_width * num_channels])
-    else:
-        batch_x = tf.reshape(batch_x, [batch_size, -1, window_width, num_channels])
-
-    return batch_x
 
 def profile(function_name: str):
     def decorator(func):
