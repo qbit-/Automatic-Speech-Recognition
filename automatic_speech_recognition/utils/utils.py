@@ -119,3 +119,49 @@ def profile(function_name: str):
             return res
         return wrapper
     return decorator
+
+
+def select_layers(model, names=None, trainable_only=False, non_trainable_only=False, other_predicate=None):
+    """
+    Returns array of keras.Layer objects from model with specified names which satisfy other conditions.
+    If names is None then all layers are considered.
+    """
+    layers = list(model.layers)
+    if names is not None:
+        layers = filter(lambda x: x.name in names, layers)
+    if trainable_only:
+        layers = filter(lambda x: len(x.trainable_variables) > 0, layers)
+    if non_trainable_only:
+        layers = filter(lambda x: len(x.trainable_variables) == 0, layers)
+    if other_predicate is not None:
+        layers = filter(other_predicate, layers)
+    return list(layers)
+
+
+def wrap_call_methods(model, wrapper, names=None, trainable_only=False, non_trainable_only=False, 
+                      wrap_rnn_cells=False, wrap_time_distributed_inner=False):
+    """
+    Wraps call function of specified layers in wrapper decorator.
+    
+    model: model which layers will wrapped. Argument is mutated.
+    wrapper: callable which recives layer and 
+        returns wrapped call method.
+    layers: list of layer names to be wrapped. If None then all
+        layers will be wrapped.
+    trainable_only: wrap operation will only be applied to layers 
+        with trainable parameters.
+    non_trainable_only: wrap operation will only be applied to layers 
+        without trainable parameters.
+    wrap_rnn_cells: if True than instead of RNN layer rnn cell 
+        call will wraped.
+    wrap_time_distributed_inner: if True than instead of TimeDistruted layer
+        its inner layer will be wrapped
+    """
+    for layer in select_layers(model, names, trainable_only, non_trainable_only):
+        if wrap_rnn_cells and isinstance(layer, keras.layers.RNN):
+            layer.cell.call = wrapper(layer.cell)
+        elif wrap_time_distributed_inner and isinstance(layer, keras.layers.TimeDistributed):
+            layer.layer.call = wrapper(layer.layer)
+        else:
+            layer.call = wrapper(layer)
+    return model
