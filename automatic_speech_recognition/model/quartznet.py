@@ -158,6 +158,9 @@ def get_quartznet(input_dim, output_dim,
     return model
 
 
+QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
+
+
 def load_nvidia_quartznet(
         enc_path="./data/JasperDecoderForCTC-STEP-247400.pt",
         dec_path="./data/JasperEncoder-STEP-247400.pt"):
