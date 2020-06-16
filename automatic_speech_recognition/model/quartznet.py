@@ -19,6 +19,8 @@ class Small_block(keras.Model):
         self.bn = layers.BatchNormalization()
         self.residual = residual
         self.relu = layers.ReLU()
+        self.kernel_size = kernel_size
+        self.filters = filters
 
     def call(self, input_tensor, residual_value, training=False):
         x = self.conv(input_tensor)
@@ -28,19 +30,35 @@ class Small_block(keras.Model):
         x = self.relu(x)
         return x
 
+    def get_config(self):
+        config = super(Small_block, self).get_config()
+        config.update(
+            {
+                'kernel_size': self.kernel_size,
+                'filters': self.filters,
+                'residual': self.residual
+            }
+        )
+        return config
+
 
 class B_block(keras.Model):
     """
     Base residual block of the Quartznet model
     """
-    def __init__(self, kernel_size, filters, n_small_blocks, name):
-        super(B_block, self).__init__(name=name)
+    def __init__(self, kernel_size, filters, n_small_blocks, layer_name):
+        super(B_block, self).__init__(name=layer_name)
         self.small_blocks = []
         for i in range(n_small_blocks - 1):
             self.small_blocks.append(Small_block(kernel_size, filters))
         self.res_block = Small_block(kernel_size, filters, residual=True)
-        self.conv = layers.Conv1D(filters, 1, padding='same', use_bias=False)
+        self.conv = layers.Conv1D(
+            filters, 1, padding='same', use_bias=False)
         self.bn = layers.BatchNormalization()
+        self.kernel_size = kernel_size
+        self.filters = filters
+        self.n_small_blocks = n_small_blocks
+        self.layer_name = layer_name
 
     def call(self, x, training=False):
         residual_value = self.conv(x)
@@ -49,6 +67,18 @@ class B_block(keras.Model):
             x = self.small_blocks[i](x, None, training=training)
         x = self.res_block(x, residual_value, training=training)
         return x
+
+    def get_config(self):
+        config = super(B_block, self).get_config()
+        config.update(
+            {
+                'kernel_size': self.kernel_size,
+                'filters': self.filters,
+                'n_small_blocks': self.n_small_blocks,
+                'layer_name': self.layer_name,
+            }
+        )
+        return config
 
 
 def get_quartznet(input_dim, output_dim,
