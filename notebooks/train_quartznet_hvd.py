@@ -92,6 +92,7 @@ def get_pipeline(model, optimizer=None):
 
 
 def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
+                lr_decay=0.5,
                 batch_size=10, epochs=25, tensorboard=False, restart_filename=None,
                 is_mixed_precision=False, n_blocks=1):
     basename = os.path.basename(filename).split('.')[0]
@@ -126,7 +127,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
         hvd.callbacks.MetricAverageCallback(),
     ]
     schedule=tf.keras.experimental.CosineDecayRestarts(
-        initial_lr_global, 10, t_mul=2.0, m_mul=1.0, alpha=0.0,
+        initial_lr_global, 10, t_mul=2.0, m_mul=lr_decay, alpha=0.0,
     )
     callbacks.append(LearningRateScheduler(schedule))
     if hvd.rank() == 0:
@@ -176,6 +177,9 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float,
                        help='initial learning rate',
                        default=0.005)
+    parser.add_argument('--decay', type=float,
+                       help='learning rate decay per 10 epochs',
+                       default=0.5)
     parser.add_argument('--epochs', type=int,
                        help='number of epochs to use for training',
                        default=25)
@@ -194,7 +198,7 @@ if __name__ == '__main__':
                 val_dataset_idx=args.val_dataset, epochs=args.epochs,
                 batch_size=args.batch_size,
                 tensorboard=args.tensorboard, restart_filename=args.restart_filename,
-                is_mixed_precision=args.mix_pres, initial_lr=args.lr)
+                is_mixed_precision=args.mix_pres, initial_lr=args.lr, lr_decay=args.decay)
 
 
 
