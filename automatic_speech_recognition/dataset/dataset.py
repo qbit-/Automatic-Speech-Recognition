@@ -38,6 +38,7 @@ class Dataset(keras.utils.Sequence):
         # slice references if parallel execution is required
         local_len = int(np.floor(len(references.index) / group_size))
         assert local_len > 0, "less than 1 element per worker"
+        assert rank in range(group_size), "rank should be in range(0, group_size)"
         start, end = rank * local_len, (rank + 1) * local_len
 
         self._references = references[start:end].reset_index(

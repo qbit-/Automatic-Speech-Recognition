@@ -31,7 +31,7 @@ class Small_block(keras.Model):
         return x
 
     def get_config(self):
-        config = super(Small_block, self).get_config()
+        config = {}
         config.update(
             {
                 'kernel_size': self.kernel_size,
@@ -69,7 +69,7 @@ class B_block(keras.Model):
         return x
 
     def get_config(self):
-        config = super(B_block, self).get_config()
+        config = {}
         config.update(
             {
                 'kernel_size': self.kernel_size,

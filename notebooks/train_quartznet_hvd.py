@@ -1,4 +1,3 @@
-
 import tensorflow as tf
 import tensorflow_addons as tfa
 import sys
@@ -92,8 +91,9 @@ def get_pipeline(model, optimizer=None):
 # In[12]:
 
 
-def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001, batch_size=10, epochs=25, tensorboard=False, restart_filename=None,
-               is_mixed_precision=False, n_blocks=1):
+def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
+                batch_size=10, epochs=25, tensorboard=False, restart_filename=None,
+                is_mixed_precision=False, n_blocks=1):
     basename = os.path.basename(filename).split('.')[0]
     model_dir = os.path.join(os.path.dirname(filename), basename + '_train')
     os.makedirs(model_dir, exist_ok=True)
@@ -103,23 +103,24 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001, b
     if restart_filename:
         model.load_weights(restart_filename)
 
-    batch_size_global = batch_size * hvd.size()
     initial_lr_global = initial_lr * hvd.size()
-    print(f'batch_size: {batch_size_global}')
-    print(f'initial_lr: {initial_lr_global}')
-
-    dataset = asr.dataset.Audio.from_csv(dataset_idx, batch_size=batch_size_global, use_filesizes=True)
+    dataset = asr.dataset.Audio.from_csv(
+        dataset_idx, batch_size=batch_size, use_filesizes=True,
+        group_size=hvd.size(), rank=hvd.rank())
     dataset.sort_by_length()
     dataset.shuffle_indices()
+
     if val_dataset_idx:
-        val_dataset = asr.dataset.Audio.from_csv(val_dataset_idx, batch_size=batch_size_global, use_filesizes=True)
+        val_dataset = asr.dataset.Audio.from_csv(
+            val_dataset_idx, batch_size=batch_size, use_filesizes=True,
+            group_size=hvd.size(), rank=hvd.rank())
 
     opt_instance = tf.optimizers.Adam(initial_lr_global, beta_1=0.9, beta_2=0.999)
     #opt_instance = tfa.optimizers.NovoGrad(initial_lr_global, beta_1=0.95, beta_2=0.5, weight_decay=0.001)
 
     opt = hvd.DistributedOptimizer(opt_instance)
     pipeline = get_pipeline(model, opt)
-    
+
     callbacks = [
         hvd.callbacks.BroadcastGlobalVariablesCallback(0),
         hvd.callbacks.MetricAverageCallback(),
@@ -130,7 +131,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001, b
     callbacks.append(LearningRateScheduler(schedule))
     if hvd.rank() == 0:
         prefix = datetime.now().strftime("%Y%m%d-%H%M%S")
-        monitor_metric_name = 'loss' if not val_dataset_idx else 'val_loss'  # val_loss is wrong and broken
+        monitor_metric_name = 'loss' # if not val_dataset_idx else 'val_loss'  # val_loss is wrong and broken
         callbacks.append(
             keras.callbacks.ModelCheckpoint(
                 os.path.join(model_dir, prefix + '_best.h5'),
@@ -144,13 +145,12 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001, b
     time_start = time.time()
 
     hist = pipeline.fit(dataset, epochs=epochs, dev_dataset=val_dataset,
-                        #steps_per_epoch=270,
                         callbacks=callbacks,
                         verbose=1 if hvd.rank() == 0 else 0,
-                        #workers=2, use_multiprocessing=True
+                        # workers=2, use_multiprocessing=True causes deadlock at the end of epoch
     )
     elapsed = time.time() - time_start
-    
+
     if hvd.rank() == 0:
         print(f'Elapsed time: {elapsed}')
         #np.save(os.path.join(model_dir, prefix + '_hist.p'), np.array(hist))
