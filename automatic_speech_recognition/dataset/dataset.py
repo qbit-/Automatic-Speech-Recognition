@@ -7,20 +7,42 @@ from tensorflow import keras
 
 class Dataset(keras.utils.Sequence):
     """
-    The `Dataset` represents the sequence of samples used for Keras models.
-    It has a view by the `reference` to sample sources, so we do not keep an
-    entire dataset in the memory.
+    The `Dataset` represents the sequence of samples used for
+    Keras models.
+    It has a view by the `reference` to sample sources,
+    so we do not keep an entire dataset in the memory.
 
-    The class contains two essential methods `len` and `getitem`, which are
-    required to use the `keras.utils.Sequence` interface. This structure
-    guarantee that the network only trains once on each sample per epoch.
+    The class contains two essential methods `len` and `getitem`,
+    which are required to use the `keras.utils.Sequence` interface.
+    This structure guarantee that the network only trains once on each
+    sample per epoch.
     """
 
     def __init__(self,
                  references: pd.DataFrame,
-                 batch_size: int):
+                 batch_size: int,
+                 group_size: int = 1,
+                 rank: int = 0):
+        """
+        :param references: dataframe with paths to data files
+        :param batch_size: batch size
+        :param group_size: number of independent consumers of data for
+         parallel use. Each consumer will get different part
+         of the dataset
+        :param rank: rank of the consumer in range(0, group_size)
+        """
         self._batch_size = batch_size
-        self._references = references
+        self._group_size = group_size
+        self._rank = rank
+
+        # slice references if parallel execution is required
+        local_len = int(np.floor(len(references.index) / group_size))
+        assert local_len > 0, "less than 1 element per worker"
+        start, end = rank * local_len, (rank + 1) * local_len
+
+        self._references = references[start:end].reset_index(
+            drop=True, inplace=False)
+
         self._indices = np.arange(len(self))
 
     @property
