@@ -162,8 +162,8 @@ QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
 
 
 def load_nvidia_quartznet(
-        enc_path="./data/JasperDecoderForCTC-STEP-247400.pt",
-        dec_path="./data/JasperEncoder-STEP-247400.pt"):
+        enc_path="./data/JasperEncoder-STEP-247400.pt",
+        dec_path="./data/JasperDecoderForCTC-STEP-247400.pt"):
     """
     The weights for Quartznet model (English)
     can be downloaded with the following command:
