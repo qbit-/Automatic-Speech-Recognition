@@ -3,11 +3,17 @@ import re
 import argparse
 
 
-def main(nodestring, n_per_node=4):
-    match = re.match(r'(?P<prefix>[a-zA-Z]*)((?:\[)?(?P<node_idxs>[0-9,]*)(?:\])?)', nodestring)
+def get_nodelist(nodestring, n_per_node=4):
+    match = re.match(r'(?P<prefix>[a-zA-Z]*)((?:\[)?(?P<node_idx_grp>[0-9,-]*)(?:\])?)', nodestring)
     pref = match['prefix']
-    node_idxs = match['node_idxs'].split(',')
-    print(','.join(f'{pref}{idx}:{n_per_node}' for idx in node_idxs))
+    node_grps = match['node_idx_grp'].split(',')
+    nodes = []
+    for grp in node_grps:
+        start, *end = grp.split('-')
+        nodes.append(int(start))
+        if len(end) == 1:
+            nodes.extend(range(int(start)+1, int(end[0])+1))
+    print(','.join(f'{pref}{idx}:{n_per_node}' for idx in nodes))
 
 
 if __name__ == '__main__':
@@ -18,4 +24,4 @@ if __name__ == '__main__':
     parser.add_argument('--pn', type=int,
                         help='number of processes per node', default=4)
     args = parser.parse_args()
-    main(args.nl, args.pn)
+    get_nodelist(args.nl, args.pn)
