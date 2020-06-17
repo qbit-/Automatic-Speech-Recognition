@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --nodes=8
-#SBATCH --ntasks-per-node=4
-#SBATCH --partition gpu_big
-#SBATCH --gres=gpu:2
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=8
+#SBATCH --partition gpu_small
+#SBATCH --gres=gpu:4
 #SBATCH --time=1-00:0:00
 #SBATCH --output logs/job_-%J.log
 
@@ -16,10 +16,10 @@ cd /trinity/home/r.schutski/asr_speedup/Automatic-Speech-Recognition/notebooks
 
 echo 'Running script:'
 echo ${@}
-nodelist=`python get_nodelist.py --nl $SLURM_NODELIST --pn 2`
+nodelist=`python get_nodelist.py --nl $SLURM_NODELIST --pn 4`
 echo 'Will run on nodes:'
 echo $nodelist
-# horovodrun -np 16 -H $nodelist ${@}
+# horovodrun -np 16 -H $nodelist ${1}
 # -H $nodelist \
 mpirun -np 16 \
     -bind-to none -map-by slot \
