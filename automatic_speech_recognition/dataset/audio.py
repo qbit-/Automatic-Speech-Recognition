@@ -12,12 +12,10 @@ class Audio(Dataset):
     transcriptions. The audio files are read and then return with
     transcriptions. Now, we support only csv files.
     """
-    def __init__(self, use_filesizes=True,
-                 *args, **kwargs):
+    def __init__(self, *args, use_filesizes=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.sr = None
         self.use_filesizes = use_filesizes
-
 
     @classmethod
     def from_csv(cls, file_path: str,
