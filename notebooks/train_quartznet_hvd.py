@@ -69,7 +69,7 @@ def get_pipeline(model, optimizer=None):
     alphabet = asr.text.Alphabet(lang='en')
     features_extractor = asr.features.FilterBanks(
         features_num=64,
-        standardize=None,
+        standardize="per_feature",
         winlen=0.02,
         winstep=0.01,
     )
@@ -91,9 +91,9 @@ def get_pipeline(model, optimizer=None):
 # In[12]:
 
 
-def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
-                lr_decay=0.5,
-                batch_size=10, epochs=25, tensorboard=False, restart_filename=None,
+def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
+                lr_decay=0.99,
+                batch_size=20, epochs=250, tensorboard=False, restart_filename=None,
                 is_mixed_precision=False, n_blocks=1):
     basename = os.path.basename(filename).split('.')[0]
     model_dir = os.path.join(os.path.dirname(filename), basename + '_train')
@@ -115,9 +115,13 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
         val_dataset = asr.dataset.Audio.from_csv(
             val_dataset_idx, batch_size=batch_size, use_filesizes=True,
             group_size=hvd.size(), rank=hvd.rank())
+        val_dataset.sort_by_length()
+        val_dataset.shuffle_indices()
+    else:
+        val_dataset = None
 
-    opt_instance = tf.optimizers.Adam(initial_lr_global, beta_1=0.9, beta_2=0.999)
-    #opt_instance = tfa.optimizers.NovoGrad(initial_lr_global, beta_1=0.95, beta_2=0.5, weight_decay=0.001)
+    #opt_instance = tf.optimizers.Adam(initial_lr_global, beta_1=0.9, beta_2=0.999)
+    opt_instance = tfa.optimizers.NovoGrad(initial_lr_global, beta_1=0.95, beta_2=0.5, weight_decay=0.001)
 
     opt = hvd.DistributedOptimizer(opt_instance)
     pipeline = get_pipeline(model, opt)
@@ -132,7 +136,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
     callbacks.append(LearningRateScheduler(schedule))
     if hvd.rank() == 0:
         prefix = datetime.now().strftime("%Y%m%d-%H%M%S")
-        monitor_metric_name = 'loss' # if not val_dataset_idx else 'val_loss'  # val_loss is wrong and broken
+        monitor_metric_name = 'loss' if not val_dataset_idx else 'val_loss'  # val_loss is wrong and broken
         callbacks.append(
             keras.callbacks.ModelCheckpoint(
                 os.path.join(model_dir, prefix + '_best.h5'),
@@ -176,13 +180,13 @@ if __name__ == '__main__':
                         default=20)
     parser.add_argument('--lr', type=float,
                        help='initial learning rate',
-                       default=0.005)
+                       default=0.05)
     parser.add_argument('--decay', type=float,
                        help='learning rate decay per 10 epochs',
-                       default=0.5)
+                       default=0.99)
     parser.add_argument('--epochs', type=int,
                        help='number of epochs to use for training',
-                       default=25)
+                       default=250)
     parser.add_argument('--tensorboard', type=bool,
                        help='if tensorboard log will be written',
                        default=False)
