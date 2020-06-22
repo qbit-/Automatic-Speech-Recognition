@@ -39,20 +39,41 @@ def read_transcript(filename: str) -> List[Tuple[str, str]]:
     """
     Reads rows and splits them by first space
     :param filename:
-    :return:
+    :return: tuples of (name, transcript)
     """
     with open(filename, 'r') as file:
-        result = [tuple(line.strip().lower().split(' ', 1))
+        result = [(line.strip().split(' ', 1)[0],
+                  line.strip().split(' ', 1)[1].lower())
                   for line in file.readlines()]
     return result
 
 
+def write_transcript(filename: str,
+                     items: List[Tuple[str, str]]):
+    """
+    Writes the database file
+    :param filename: filename of the database
+    :param items: tuples of the local filename and transcripts
+    """
+    with open(filename, 'w') as file:
+        result = '\n'.join(
+            '{} {}'.format(
+                name.strip(),
+                transcript.strip().upper())
+            for name, transcript in items)
+        file.write(result)
+
+
 def convert_flac_to_wav(source: str, dest: str):
+    import librosa
     if os.path.isfile(dest):
         logging.info(
             f"Tried transfer {source} but file already exists {dest}")
-    audio = AudioSegment.from_file(source, 'flac')
-    audio.export(dest, 'wav')
+   #audio = AudioSegment.from_file(source, 'flac')
+   #audio.export(dest, 'wav')
+
+    y, sr = librosa.load(source, sr=16000)
+    librosa.output.write_wav(dest, y, sr)
 
 
 def transfer_transcripted_audio(
@@ -123,7 +144,7 @@ def create_index_data(cwd: str, dataset_path: str) -> pd.DataFrame:
                 item_file_paths, item_transcripts = zip(*read_transcript(
                     os.path.join(current_folder, item)))
                 transcripts.extend(item_transcripts)
-                
+
                 for file_name in item_file_paths:
                     file_paths.append(
                         os.path.relpath(
@@ -167,11 +188,91 @@ def transcode_flac_wav_recursive(path, keep_original=False):
                 os.remove(os.path.join(path, item))
 
 
-def main(ds_name: str, cwd: str, dest_dir: str):
+def create_augmentation_data(
+        dataset_path: str, speed_augment_by: float = 0.1):
+    """
+    For each audio file in the dataset creates its slower and faster version.
+
+    :param dataset_path: path of the dataset. May be either absolute or
+                relative
+    """
+    def walk_dirs(current_folder: str):
+        file_paths = []
+        for item in os.listdir(current_folder):
+            if os.path.isdir(os.path.join(current_folder, item)):
+                # Go recursive
+                item_file_paths = walk_dirs(
+                     os.path.join(current_folder, item))
+
+                file_paths.extend(item_file_paths)
+
+            elif item.endswith('.trans.txt'):
+                db_filename = os.path.join(current_folder, item)
+
+                # Read transcript
+                item_file_paths, transcripts = zip(*read_transcript(
+                    db_filename))
+
+                # generate augmented sound files
+                additional_file_paths = []
+                additional_transcripts = []
+                for file_name, transcript in zip(
+                        item_file_paths, transcripts):
+                    in_filename = os.path.join(
+                                current_folder, f'{file_name}.wav')
+                    file_paths.append(in_filename)
+
+                    out_filename_f = os.path.join(
+                                current_folder, f'{file_name}-FAST.wav')
+                    change_sound_speed(in_filename, out_filename_f,
+                                       1 + speed_augment_by)
+                    additional_file_paths.append(f'{file_name}-FAST')
+                    additional_transcripts.append(transcript)
+                    file_paths.append(out_filename_f)
+
+                    out_filename_s = os.path.join(
+                                current_folder, f'{file_name}-SLOW.wav')
+                    change_sound_speed(in_filename, out_filename_s,
+                                       1 - speed_augment_by)
+                    additional_file_paths.append(f'{file_name}-SLOW')
+                    additional_transcripts.append(transcript)
+                    file_paths.append(out_filename_s)
+
+                # write updated transcripts
+                write_transcript(
+                    db_filename,
+                    list(zip(item_file_paths+tuple(additional_file_paths),
+                             transcripts+tuple(additional_transcripts)))
+                )
+
+        return file_paths
+
+    file_paths = walk_dirs(dataset_path)
+
+    return file_paths
+
+
+def change_sound_speed(source: str, dest: str, speed: float):
+    """
+    :param in_filename: filename of the input file
+    :param out_filename: filename of the output file
+    :param speed: speed of the output file
+    """
+    import librosa
+    import pyrubberband
+
+    y, sr = librosa.load(source, sr=16000)
+    yy = pyrubberband.pyrb.time_stretch(
+        y, sr, speed, rbargs=None)
+    librosa.output.write_wav(dest, yy, sr)
+
+
+def main(ds_name: str, cwd: str, dest_dir: str, augment: bool = False):
     """
     :param ds_name: name of the dataset to use
     :param cwd: current work dir, where index will be placed
     :param dest_dir: location where the dataset will be placed
+    :param augment: if creation of the augmented sound files is requested
     """
     url = datasets[ds_name]['url']
 
@@ -197,6 +298,12 @@ def main(ds_name: str, cwd: str, dest_dir: str):
     transcode_flac_wav_recursive(
         os.path.join(dest_dir, 'LibriSpeech', audio_data_dir))
 
+    if augment:
+        logging.info('Creating augmented sound files')
+        create_augmentation_data(
+            os.path.join(dest_dir, 'LibriSpeech', audio_data_dir),
+            speed_augment_by=0.1)
+
     logging.info('Generating index data')
     index_data = create_index_data(
         cwd, os.path.join(dest_dir, 'LibriSpeech', audio_data_dir))
@@ -217,5 +324,10 @@ if __name__ == '__main__':
                         help='path relative to which all'
                              'audio paths will be indexed',
                         default='.')
+    parser.add_argument('--augment', type=bool,
+                        help='if generation of augmented'
+                        ' files is requested',
+                        default=False)
+
     args = parser.parse_args()
-    main(args.type, args.index_top, args.dest)
+    main(args.type, args.index_top, args.dest, args.augment)

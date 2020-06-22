@@ -106,7 +106,7 @@ class CTCPipeline(Pipeline):
 
     def predict(self, batch_audio: List[np.ndarray], **kwargs) -> List[str]:
         """ Get ready features, and make a prediction. """
-        features = self._features_extractor(batch_audio)
+        features, feature_lengths = self._features_extractor(batch_audio)
         batch_logits = self._model.predict(features, **kwargs)
 
         decoded_labels = self._decoder(batch_logits)

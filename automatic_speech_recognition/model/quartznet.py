@@ -16,7 +16,7 @@ class Small_block(keras.Model):
         super(Small_block, self).__init__(name='small_block')
         self.conv = layers.SeparableConv1D(
             filters, kernel_size, padding='same', use_bias=False)
-        self.bn = layers.BatchNormalization()
+        self.bn = layers.BatchNormalization(momentum=0.9)
         self.residual = residual
         self.relu = layers.ReLU()
         self.kernel_size = kernel_size
@@ -36,7 +36,7 @@ class Small_block(keras.Model):
             {
                 'kernel_size': self.kernel_size,
                 'filters': self.filters,
-                'residual': self.residual
+                'residual': self.residual,
             }
         )
         return config
@@ -54,7 +54,7 @@ class B_block(keras.Model):
         self.res_block = Small_block(kernel_size, filters, residual=True)
         self.conv = layers.Conv1D(
             filters, 1, padding='same', use_bias=False)
-        self.bn = layers.BatchNormalization()
+        self.bn = layers.BatchNormalization(momentum=0.9)
         self.kernel_size = kernel_size
         self.filters = filters
         self.n_small_blocks = n_small_blocks
@@ -117,11 +117,12 @@ def get_quartznet(input_dim, output_dim,
     with tf.device('/cpu:0'):
         input_tensor = layers.Input([max_seq_length, input_dim], name='X')
 
+        x = layers.Masking()(input_tensor)
         # First encoder layer
         x = layers.SeparableConv1D(
             256, 33, padding='same', strides=2,
-            name='conv_1', use_bias=False)(input_tensor)
-        x = layers.BatchNormalization(name='BN-1')(x)
+            name='conv_1', use_bias=False)(x)
+        x = layers.BatchNormalization(name='BN-1', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-1')(x)
 
         block_idx = 1
@@ -137,13 +138,13 @@ def get_quartznet(input_dim, output_dim,
         x = layers.SeparableConv1D(
             512, 87, padding='same', name='conv_2',
             dilation_rate=2, use_bias=False)(x)
-        x = layers.BatchNormalization(name='BN-2')(x)
+        x = layers.BatchNormalization(name='BN-2', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-2')(x)
 
         # Second final layer
         x = layers.Conv1D(1024, 1, padding='same',
                           name='conv_3', use_bias=False)(x)
-        x = layers.BatchNormalization(name='BN-3')(x)
+        x = layers.BatchNormalization(name='BN-3', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-3')(x)
 
         # Third final layer

@@ -196,13 +196,17 @@ if __name__ == '__main__':
     parser.add_argument('--mix_pres', type=bool,
                        help='if mixed precision training is requested',
                        default=False)
+    parser.add_argument('--n_blocks', type=int,
+                        help='type of the quartznet model. 1 - 5x5, 2 - 5x10, 3 - 5x15',
+                        default=1)
     args = parser.parse_args()
 
     train_model(filename=args.filename, dataset_idx=args.dataset,
                 val_dataset_idx=args.val_dataset, epochs=args.epochs,
                 batch_size=args.batch_size,
                 tensorboard=args.tensorboard, restart_filename=args.restart_filename,
-                is_mixed_precision=args.mix_pres, initial_lr=args.lr, lr_decay=args.decay)
+                is_mixed_precision=args.mix_pres, initial_lr=args.lr, lr_decay=args.decay,
+                n_blocks=args.n_blocks)
 
 
 
