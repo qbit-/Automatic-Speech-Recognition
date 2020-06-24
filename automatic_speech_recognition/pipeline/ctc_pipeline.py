@@ -70,8 +70,8 @@ class CTCPipeline(Pipeline):
             features = FeaturesExtractor.align(data)
         else:
             features, feature_lengths = self._features_extractor(data)
-        features = augmentation(features) if augmentation else features
         feature_lengths = np.array(feature_lengths)
+        features = augmentation(features, feature_lengths) if augmentation else features
 
         label_lengths = np.array(
             [len(transcript) for transcript in transcripts])
@@ -98,8 +98,10 @@ class CTCPipeline(Pipeline):
         dataset = self.wrap_preprocess(
             dataset, prepared_features, augmentation)
         if dev_dataset is not None:
+            # no augmentation for testing
             dev_dataset = self.wrap_preprocess(
-                dev_dataset, prepared_features, augmentation)
+                dev_dataset, prepared_features, None)
+
         if not self._model.optimizer:  # a loss function and an optimizer
             self.compile_model()  # have to be set before the training
         return self._model.fit(dataset, validation_data=dev_dataset, **kwargs)

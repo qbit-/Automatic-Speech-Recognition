@@ -73,6 +73,7 @@ def get_pipeline(model, optimizer=None):
         winlen=0.02,
         winstep=0.01,
     )
+
     if not optimizer:
         optimizer = tf.optimizers.Adam(lr=1e-3, beta_1=0.9, beta_2=0.999)
     decoder = asr.decoder.GreedyDecoder()
@@ -83,7 +84,6 @@ def get_pipeline(model, optimizer=None):
 
 
 # In[ ]:
-
 
 
 
@@ -142,14 +142,29 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
                 os.path.join(model_dir, prefix + '_best.h5'),
                 monitor=monitor_metric_name, save_weights_only=True,
                 save_best_only=True))
+        callbacks.append(
+            keras.callbacks.ModelCheckpoint(
+            os.path.join(model_dir, prefix + '-{loss:.2f}.h5'),
+            save_weights_only=True, period=5)
+        )
         if tensorboard:
             logdir = os.path.join(model_dir, 'tb', prefix)
             tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
             callbacks.append(tensorboard_callback)
 
+
+    augmentation = asr.augmentation.SpecAugment(
+        F=21,
+        mf=2,
+        T=40,
+        mt=2
+    )
+
     time_start = time.time()
 
-    hist = pipeline.fit(dataset, epochs=epochs, dev_dataset=val_dataset,
+    hist = pipeline.fit(dataset, dev_dataset=val_dataset, 
+                        augmentation=augmentation,
+                        epochs=epochs,
                         callbacks=callbacks,
                         verbose=1 if hvd.rank() == 0 else 0,
                         # workers=2, use_multiprocessing=True causes deadlock at the end of epoch

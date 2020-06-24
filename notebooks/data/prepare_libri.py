@@ -4,9 +4,8 @@ import urllib.request
 import tarfile
 import argparse
 import logging
-from pydub import AudioSegment
 import pandas as pd
-import tempfile
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO)
 
@@ -122,7 +121,6 @@ def create_index_data(cwd: str, dataset_path: str) -> pd.DataFrame:
                 relative
     :return: pandas DataFrame with path, transcript and file size
     """
-    prefix = os.path.relpath(dataset_path, start=cwd)
 
     def walk_dirs(current_folder: str):
         file_paths = []
@@ -208,6 +206,7 @@ def create_augmentation_data(
 
             elif item.endswith('.trans.txt'):
                 db_filename = os.path.join(current_folder, item)
+                print(f"Current: {db_filename}")
 
                 # Read transcript
                 item_file_paths, transcripts = zip(*read_transcript(
@@ -216,8 +215,13 @@ def create_augmentation_data(
                 # generate augmented sound files
                 additional_file_paths = []
                 additional_transcripts = []
-                for file_name, transcript in zip(
-                        item_file_paths, transcripts):
+                for file_name, transcript in tqdm(zip(
+                        item_file_paths, transcripts)):
+                    if (file_name.endswith('FAST.wav') or
+                        file_name.endswith('SLOW.wav') or
+                        f'{file_name}-FAST' in item_file_paths
+                        or f'{file_name}-SLOW' in item_file_paths):
+                        continue
                     in_filename = os.path.join(
                                 current_folder, f'{file_name}.wav')
                     file_paths.append(in_filename)
