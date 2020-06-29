@@ -68,7 +68,7 @@ class SpecAugment:
     def mask_frequencies(features: np.ndarray, fill: np.ndarray,
                          channels: int, F: int, mf: int):
         for i in range(mf):
-            f = np.random.random_integers(low=0, high=F)
+            f = np.random.random_integers(low=0, high=F+1)
             f0 = np.random.random_integers(low=0, high=channels-F)
             features[:, f0:f0+f] = fill[f0:f0+f]
         return features
@@ -77,7 +77,7 @@ class SpecAugment:
     def mask_time(features: np.ndarray, fill: np.ndarray,
                   time: int, T: int, mt: int, max_p: float = 1.0):
         for i in range(mt):
-            t = int(np.clip(np.random.random_integers(low=0, high=T),
+            t = int(np.clip(np.random.random_integers(low=0, high=T+1),
                             a_min=0, a_max=max_p * time))
             t0 = np.random.random_integers(low=0, high=time-T)
             features[t0:t0+t, :] = fill

@@ -19,17 +19,22 @@ class Audio(Dataset):
 
     @classmethod
     def from_csv(cls, file_path: str,
-                 use_filesizes=True, **kwargs):
+                 use_filesizes: bool = True, max_filesize: int = None, **kwargs):
         """ The reference csv file contains paths and transcripts,
         which are comma separated.
         :param use_filesizes: try to read file sizes from csv
+        :param max_size: maximal size of audiofile to use.
+                         Can be calculated from desired max duration
         """
         cols = ['path', 'transcript']
         if use_filesizes:
             cols.append('filesize')
         references = pd.read_csv(file_path, usecols=cols,
                                  sep=',', encoding='utf-8', header=0)
-
+        if use_filesizes and max_filesize:
+            references = references[
+                references.filesize < max_filesize].reset_index(drop=True,
+                                                                inplace=False)
         return cls(references=references, use_filesizes=use_filesizes,
                    **kwargs)
 

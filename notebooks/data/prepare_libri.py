@@ -110,12 +110,12 @@ def transfer_transcripted_audio(
     return transcripts, file_sizes
 
 
-def create_index_data(cwd: str, dataset_path: str) -> pd.DataFrame:
+def create_index_data(index_path: str, dataset_path: str) -> pd.DataFrame:
     """
     Creates the index file which is suitable for the pipeline.
     The file contains paths to audiofiles and the transcripts
 
-    :param cwd: current work directory.
+    :param index_path: current work directory.
                 All paths will be relative to this directory.
     :param dataset_path: path of the dataset. May be either absolute or
                 relative
@@ -148,7 +148,7 @@ def create_index_data(cwd: str, dataset_path: str) -> pd.DataFrame:
                         os.path.relpath(
                             os.path.join(
                                 current_folder, f'{file_name}.wav'),
-                            start=cwd)
+                            start=index_path)
                         )
                     file_sizes.append(
                         os.path.getsize(
@@ -169,21 +169,22 @@ def create_index_data(cwd: str, dataset_path: str) -> pd.DataFrame:
 def transcode_flac_wav_recursive(path, keep_original=False):
     """
     For any FLAC file found in path creates a corresponding WAV file
-    :param path: entry point
+    :param path: top dir of the dataset
     :param keep_original: if original FLAC file should be kept
     :return: None if successfull
     """
-    for item in os.listdir(path):
-        if os.path.isdir(os.path.join(path, item)):
-            transcode_flac_wav_recursive(
-                os.path.join(path, item), keep_original=keep_original)
+    for item in sorted(os.listdir(path)):
+        current_path = os.path.join(path, item)
+        if os.path.isdir(current_path):
+            print(f'Current: {current_path}')
+            transcode_flac_wav_recursive(current_path, keep_original=keep_original)
         elif item.endswith('.flac'):
             convert_flac_to_wav(
-                os.path.join(path, item),
+                current_path,
                 os.path.join(path, os.path.splitext(item)[0] + '.wav')
             )
             if not keep_original:
-                os.remove(os.path.join(path, item))
+                os.remove(current_path)
 
 
 def create_augmentation_data(
@@ -196,7 +197,7 @@ def create_augmentation_data(
     """
     def walk_dirs(current_folder: str):
         file_paths = []
-        for item in os.listdir(current_folder):
+        for item in sorted(os.listdir(current_folder)):
             if os.path.isdir(os.path.join(current_folder, item)):
                 # Go recursive
                 item_file_paths = walk_dirs(
@@ -217,8 +218,8 @@ def create_augmentation_data(
                 additional_transcripts = []
                 for file_name, transcript in tqdm(zip(
                         item_file_paths, transcripts)):
-                    if (file_name.endswith('FAST.wav') or
-                        file_name.endswith('SLOW.wav') or
+                    if (file_name.endswith('FAST') or
+                        file_name.endswith('SLOW') or
                         f'{file_name}-FAST' in item_file_paths
                         or f'{file_name}-SLOW' in item_file_paths):
                         continue
@@ -271,11 +272,11 @@ def change_sound_speed(source: str, dest: str, speed: float):
     librosa.output.write_wav(dest, yy, sr)
 
 
-def main(ds_name: str, cwd: str, dest_dir: str, augment: bool = False):
+def main(ds_name: str, index_dir: str, data_dir: str, augment: bool = False):
     """
     :param ds_name: name of the dataset to use
-    :param cwd: current work dir, where index will be placed
-    :param dest_dir: location where the dataset will be placed
+    :param index_dir: current work dir, where index will be placed
+    :param data_dir: location where the dataset will be placed
     :param augment: if creation of the augmented sound files is requested
     """
     url = datasets[ds_name]['url']
@@ -285,33 +286,33 @@ def main(ds_name: str, cwd: str, dest_dir: str, augment: bool = False):
 
     # Prepare main dataset
     if not os.path.isdir(
-            os.path.join(dest_dir, 'LibriSpeech', audio_data_dir)):
+            os.path.join(data_dir, 'LibriSpeech', audio_data_dir)):
         if not os.path.isfile(tar_file_name):
             logging.info(f'Not found tar file {tar_file_name}.'
                          ' Downloading it.')
             urllib.request.urlretrieve(url, tar_file_name)
             logging.info(f'Successfully downloaded tar file.')
 
-        logging.info(f'Extracting into {dest_dir}')
+        logging.info(f'Extracting into {data_dir}')
         tar = tarfile.open(tar_file_name, "r:gz")
-        tar.extractall(dest_dir)
+        tar.extractall(data_dir)
         tar.close()
 
     # Transcode FLAC to WAV and create an index
     logging.info('Transcoding FLAC files')
     transcode_flac_wav_recursive(
-        os.path.join(dest_dir, 'LibriSpeech', audio_data_dir))
+        os.path.join(data_dir, 'LibriSpeech', audio_data_dir))
 
     if augment:
         logging.info('Creating augmented sound files')
         create_augmentation_data(
-            os.path.join(dest_dir, 'LibriSpeech', audio_data_dir),
+            os.path.join(data_dir, 'LibriSpeech', audio_data_dir),
             speed_augment_by=0.1)
 
     logging.info('Generating index data')
     index_data = create_index_data(
-        cwd, os.path.join(dest_dir, 'LibriSpeech', audio_data_dir))
-    index_data.to_csv(os.path.join(cwd, f'{ds_name}-index.csv'))
+        index_dir, os.path.join(data_dir, 'LibriSpeech', audio_data_dir))
+    index_data.to_csv(os.path.join(index_dir, f'{ds_name}-index.csv'))
 
 
 if __name__ == '__main__':
@@ -321,10 +322,10 @@ if __name__ == '__main__':
                         help='which dataset to download',
                         default='dev-clean',
                         choices=datasets.keys())
-    parser.add_argument('--dest', type=str,
+    parser.add_argument('--data_dir', type=str,
                         help='where to place final dataset',
                         default='.')
-    parser.add_argument('--index_top', type=str,
+    parser.add_argument('--index_dir', type=str,
                         help='path relative to which all'
                              'audio paths will be indexed',
                         default='.')
@@ -334,4 +335,4 @@ if __name__ == '__main__':
                         default=False)
 
     args = parser.parse_args()
-    main(args.type, args.index_top, args.dest, args.augment)
+    main(args.type, args.index_dir, args.data_dir, args.augment)

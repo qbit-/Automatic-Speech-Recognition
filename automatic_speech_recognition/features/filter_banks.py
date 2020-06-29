@@ -51,5 +51,5 @@ class FilterBanks(features.FeaturesExtractor):
 
         # put features into correct order (time, n_features)
         features = features.transpose()
-            
+
         return features

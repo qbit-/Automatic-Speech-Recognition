@@ -15,7 +15,7 @@ class Cutout:
 
         :param F: maximal range of frequencies to be altered
         :param T: maximal timestep to be altered at random
-        :param m: number cutout regions
+        :param n: number of cutout regions
         :param fill_value: fill value. Default None, which means the cut
                            is filled with average value
         :param seed: random seed
@@ -34,6 +34,7 @@ class Cutout:
              for features, feature_length in
              zip(batch_features, feature_lengths)], axis=0)
 
+    @staticmethod
     def cut_features(features: np.ndarray, feature_length: int, F: int,
                      T: int, n_cuts: int, fill_value: float = None):
         features = features.copy()

@@ -30,15 +30,10 @@ from tensorflow.keras.mixed_precision import experimental as mixed_precision
 # In[4]:
 
 
-from automatic_speech_recognition.model.quartznet import QUARTZNET_LAYERS
-
-
-# In[5]:
-
 
 import horovod.tensorflow.keras as hvd
 
-
+from lr_scheduler import WarmUpCosineDecayScheduler 
 
 # ## Train
 
@@ -98,7 +93,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
     basename = os.path.basename(filename).split('.')[0]
     model_dir = os.path.join(os.path.dirname(filename), basename + '_train')
     os.makedirs(model_dir, exist_ok=True)
-    
+
     model = asr.model.get_quartznet(64, 29, is_mixed_precision=is_mixed_precision, num_b_block_repeats=n_blocks)
 
     if restart_filename:
@@ -107,6 +102,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
     initial_lr_global = initial_lr * hvd.size()
     dataset = asr.dataset.Audio.from_csv(
         dataset_idx, batch_size=batch_size, use_filesizes=True,
+        max_filesize=734800,
         group_size=hvd.size(), rank=hvd.rank())
     dataset.sort_by_length()
     dataset.shuffle_indices()
@@ -121,7 +117,9 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
         val_dataset = None
 
     #opt_instance = tf.optimizers.Adam(initial_lr_global, beta_1=0.9, beta_2=0.999)
-    opt_instance = tfa.optimizers.NovoGrad(initial_lr_global, beta_1=0.95, beta_2=0.5, weight_decay=0.001)
+    opt_instance = tfa.optimizers.NovoGrad(
+        initial_lr_global, beta_1=0.95, beta_2=0.5, weight_decay=0.001,
+        grad_averaging=False)
 
     opt = hvd.DistributedOptimizer(opt_instance)
     pipeline = get_pipeline(model, opt)
@@ -130,10 +128,18 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
         hvd.callbacks.BroadcastGlobalVariablesCallback(0),
         hvd.callbacks.MetricAverageCallback(),
     ]
-    schedule=tf.keras.experimental.CosineDecayRestarts(
-        initial_lr_global, 10, t_mul=2.0, m_mul=lr_decay, alpha=0.0,
-    )
-    callbacks.append(LearningRateScheduler(schedule))
+    # schedule=tf.keras.experimental.CosineDecayRestarts(
+    #     initial_lr_global, 20, t_mul=2.0, m_mul=lr_decay, alpha=0.0,
+    # )
+    # schedule=tf.keras.experimental.CosineDecay(
+    #     initial_lr_global, epochs, 0.0001
+    # )
+    # callbacks.append(LearningRateScheduler(schedule))
+    scheduler = WarmUpCosineDecayScheduler(
+        learning_rate_base=initial_lr_global, total_steps=epochs, warmup_steps=1,
+        warmup_learning_rate=initial_lr_global/10, verbose=False)
+    callbacks.append(scheduler)
+
     if hvd.rank() == 0:
         prefix = datetime.now().strftime("%Y%m%d-%H%M%S")
         monitor_metric_name = 'loss' if not val_dataset_idx else 'val_loss'  # val_loss is wrong and broken
@@ -144,25 +150,38 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.05,
                 save_best_only=True))
         callbacks.append(
             keras.callbacks.ModelCheckpoint(
-            os.path.join(model_dir, prefix + '-{loss:.2f}.h5'),
-            save_weights_only=True, period=5)
+            os.path.join(model_dir, prefix + '-{epoch}-{loss:.2f}.h5'),
+                save_weights_only=True, save_freq=1100)
         )
-        if tensorboard:
-            logdir = os.path.join(model_dir, 'tb', prefix)
-            tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
-            callbacks.append(tensorboard_callback)
+        #if tensorboard:
+        #    logdir = os.path.join(model_dir, 'tb', prefix)
+        #    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+        #    callbacks.append(tensorboard_callback)
 
 
+    # parameters taken from https://github.com/NVIDIA/OpenSeq2Seq/blob/master/example_configs/speech2text/quartznet15x5_LibriSpeech.py
     augmentation = asr.augmentation.SpecAugment(
-        F=21,
+        F=6,
         mf=2,
-        T=40,
-        mt=2
+        T=6,
+        mt=2,
+        fill_value=0,
     )
+
+    # same as for Jasper model
+    # augmentation = asr.augmentation.Cutout(
+    #      F=26,
+    #      T=60,
+    #      n=2,
+    #      fill_value=0
+    # )
+
+    # same as in NeMo code
+    #augmentation = asr.augmentation.Cutout(F=50, T=99, n=5)
 
     time_start = time.time()
 
-    hist = pipeline.fit(dataset, dev_dataset=val_dataset, 
+    hist = pipeline.fit(dataset, dev_dataset=val_dataset,
                         augmentation=augmentation,
                         epochs=epochs,
                         callbacks=callbacks,
@@ -254,7 +273,5 @@ if __name__ == '__main__':
 
 
 # In[ ]:
-
-
 
 
