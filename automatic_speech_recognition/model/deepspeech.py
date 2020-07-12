@@ -64,12 +64,12 @@ def get_deepspeech(input_dim, output_dim,
         x = layers.Dropout(rate=dropouts[0])(x)
 
         x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_2')(x)
+            layers.Dense(units), name='td_dense_2')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[1])(x)
 
         x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_3')(x)
+            layers.Dense(units), name='td_dense_3')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[2])(x)
 
@@ -78,12 +78,12 @@ def get_deepspeech(input_dim, output_dim,
         x = layers.Dropout(rate=dropouts[3])(x)
 
         x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_4')(x)
+            layers.Dense(units), name='td_dense_4')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[4])(x)
 
         x = layers.TimeDistributed(
-            layers.Dense(output_dim), name='dense_5')(x)
+            layers.Dense(output_dim), name='td_dense_5')(x)
 
         model = keras.Model(input_tensor, x, name='DeepSpeech')
 
