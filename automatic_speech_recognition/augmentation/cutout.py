@@ -42,10 +42,10 @@ class Cutout:
         time = feature_length
 
         for i in range(n_cuts):
-            t = np.random.random_integers(low=0, high=T)
+            t = np.random.random_integers(low=0, high=T+1)
             t0 = np.random.random_integers(low=0, high=time-T)
 
-            f = np.random.random_integers(low=0, high=F)
+            f = np.random.random_integers(low=0, high=F+1)
             f0 = np.random.random_integers(low=0, high=channels-F)
 
             if not fill_value:

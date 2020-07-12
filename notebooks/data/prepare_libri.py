@@ -6,6 +6,7 @@ import argparse
 import logging
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
@@ -219,29 +220,29 @@ def create_augmentation_data(
                 for file_name, transcript in tqdm(zip(
                         item_file_paths, transcripts)):
                     if (file_name.endswith('FAST') or
-                        file_name.endswith('SLOW') or
-                        f'{file_name}-FAST' in item_file_paths
-                        or f'{file_name}-SLOW' in item_file_paths):
+                        file_name.endswith('SLOW')):
                         continue
                     in_filename = os.path.join(
                                 current_folder, f'{file_name}.wav')
                     file_paths.append(in_filename)
 
-                    out_filename_f = os.path.join(
-                                current_folder, f'{file_name}-FAST.wav')
-                    change_sound_speed(in_filename, out_filename_f,
-                                       1 + speed_augment_by)
-                    additional_file_paths.append(f'{file_name}-FAST')
-                    additional_transcripts.append(transcript)
-                    file_paths.append(out_filename_f)
+                    if not (f'{file_name}-FAST' in item_file_paths):
+                        out_filename_f = os.path.join(
+                            current_folder, f'{file_name}-FAST.wav')
+                        change_sound_speed(in_filename, out_filename_f,
+                                           1 + speed_augment_by)
+                        additional_file_paths.append(f'{file_name}-FAST')
+                        additional_transcripts.append(transcript)
+                        file_paths.append(out_filename_f)
 
-                    out_filename_s = os.path.join(
-                                current_folder, f'{file_name}-SLOW.wav')
-                    change_sound_speed(in_filename, out_filename_s,
-                                       1 - speed_augment_by)
-                    additional_file_paths.append(f'{file_name}-SLOW')
-                    additional_transcripts.append(transcript)
-                    file_paths.append(out_filename_s)
+                    if not (f'{file_name}-SLOW' in item_file_paths):
+                        out_filename_s = os.path.join(
+                            current_folder, f'{file_name}-SLOW.wav')
+                        change_sound_speed(in_filename, out_filename_s,
+                                           1 - speed_augment_by)
+                        additional_file_paths.append(f'{file_name}-SLOW')
+                        additional_transcripts.append(transcript)
+                        file_paths.append(out_filename_s)
 
                 # write updated transcripts
                 write_transcript(
@@ -301,7 +302,7 @@ def main(ds_name: str, index_dir: str, data_dir: str, augment: bool = False):
     # Transcode FLAC to WAV and create an index
     logging.info('Transcoding FLAC files')
     transcode_flac_wav_recursive(
-        os.path.join(data_dir, 'LibriSpeech', audio_data_dir))
+       os.path.join(data_dir, 'LibriSpeech', audio_data_dir))
 
     if augment:
         logging.info('Creating augmented sound files')
