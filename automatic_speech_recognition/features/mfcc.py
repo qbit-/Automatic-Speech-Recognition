@@ -3,6 +3,31 @@ import numpy as np
 import librosa
 from . import audio_utils
 from .. import features
+from tensorflow.python.ops import gen_audio_ops as contrib_audio
+
+
+class TfMFCC(features.FeaturesExtractor):
+
+    def __init__(self, features_num: int, standardize=None, sample_rate=16000, 
+    winlen=0.032, winstep=0.02):
+        super().__init__(standardize=standardize)
+        self.features_num = features_num
+        self.sample_rate = sample_rate
+        self.window_size = int(winlen * sample_rate)
+        self.window_step = int(winstep * sample_rate)
+
+    def make_features(self, audio: np.ndarray) -> np.ndarray:
+        """ Use `python_speech_features` lib to extract log filter banks from
+        the features file. """
+        spectrogram = contrib_audio.audio_spectrogram(audio.audio,
+                                                    window_size=self.window_size,
+                                                    stride=self.window_step,
+                                                    magnitude_squared=True)
+        mfccs = contrib_audio.mfcc(spectrogram=spectrogram,
+                                    sample_rate=self.sample_rate,
+                                    dct_coefficient_count=self.features_num,
+                                    upper_frequency_limit=self.sample_rate//2)
+        return mfccs[0]
 
 
 class MFCC(features.FeaturesExtractor):

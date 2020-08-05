@@ -117,8 +117,8 @@ class CTCPipeline(Pipeline):
 
     def wrap_preprocess(self,
                         dataset: dataset.Dataset,
-                        is_extracted: bool,
-                        augmentation: augmentation.Augmentation):
+                        is_extracted: bool=False,
+                        augmentation: augmentation.Augmentation=None):
         """ Dataset does not know the feature extraction process by design.
         The Pipeline class exclusively understand dependencies between
         components. """

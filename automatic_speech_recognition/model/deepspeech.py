@@ -48,10 +48,11 @@ def get_deepspeech(input_dim, output_dim,
 
     with tf.device('/gpu:0'):
         input_tensor = layers.Input([max_seq_length, input_dim], name='X')
+        x = layers.Masking()(input_tensor)
 
         # Add 4th dimension [batch, time, frequency, channel]
         x = layers.Lambda(keras.backend.expand_dims,
-                          arguments=dict(axis=3))(input_tensor)
+                          arguments=dict(axis=3))(x)
         # Fill zeros around time dimension
         x = layers.ZeroPadding2D(padding=(context, 0))(x)
         # Convolve signal in time dim
@@ -60,16 +61,15 @@ def get_deepspeech(input_dim, output_dim,
         # Squeeze into 3rd dim array
         x = layers.Lambda(keras.backend.squeeze, arguments=dict(axis=2))(x)
 
+
         x = layers.ReLU()(x)
         x = layers.Dropout(rate=dropouts[0])(x)
 
-        x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_2')(x)
+        x = layers.Dense(units, name='dense_2')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[1])(x)
 
-        x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_3')(x)
+        x = layers.Dense(units, name='dense_3')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[2])(x)
 
@@ -77,13 +77,11 @@ def get_deepspeech(input_dim, output_dim,
                         name='lstm_1', unroll=tflite_version)(x)
         x = layers.Dropout(rate=dropouts[3])(x)
 
-        x = layers.TimeDistributed(
-            layers.Dense(units), name='dense_4')(x)
+        x = layers.Dense(units, name='dense_4')(x)
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[4])(x)
 
-        x = layers.TimeDistributed(
-            layers.Dense(output_dim), name='dense_5')(x)
+        x = layers.Dense(output_dim, name='dense_5')(x)
 
         model = keras.Model(input_tensor, x, name='DeepSpeech')
 
@@ -122,7 +120,7 @@ def reformat_deepspeech_lstm(W, b):
 
 def load_mozilla_deepspeech(
         path="./data/mozilla_deepspeech.pb", tflite_version=False,
-        is_mixed_precision=False):
+        is_mixed_precision=False, verbose=False):
     """
     The weights for the model can be downloaded from
     https://github.com/mozilla/DeepSpeech/releases/download/v0.7.3/deepspeech-0.7.3-checkpoint.tar.gz
@@ -133,9 +131,10 @@ def load_mozilla_deepspeech(
     for key in loaded_tensors.keys():
         # check if tensor really represents a weight tensor
         if loaded_tensors[key].size > 10 and 'Const' not in key:
-            print(
-                f'Found weight tensor {key} with '
-                f'shape {loaded_tensors[key].shape}')
+            if verbose:
+                print(
+                    f'Found weight tensor {key} with '
+                    f'shape {loaded_tensors[key].shape}')
             loaded_weights.append(loaded_tensors[key])
 
     # Fix differences in stored weights between mozilla deepspeech and keras
@@ -150,8 +149,9 @@ def load_mozilla_deepspeech(
         loaded_weights[9], loaded_weights[8],  # Dense 4
         loaded_weights[11], loaded_weights[10]  # Dense 5
     ]
-    print("Shapes of weights prepared to be loaded into keras model")
-    print([w.shape for w in keras_weights])
+    if verbose:
+        print("Shapes of weights prepared to be loaded into keras model")
+        print([w.shape for w in keras_weights])
 
     # Deepspeech specs are taken from Mozilla Deepspeech
     model = get_deepspeech(input_dim=26,

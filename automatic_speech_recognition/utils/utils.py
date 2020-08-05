@@ -54,6 +54,15 @@ def read_audio(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     audio, sample_rate = librosa.load(file_path, sr=None)
     return audio, sample_rate
 
+def tf_read_audio(file_path: str):
+    """
+    Read audiofile to np.ndarray of np.float32 numbers,
+    normalized in between [-1, 1]
+    """
+    audio = tf.io.read_file(file_path)
+    waveform = tf.audio.decode_wav(audio)
+    return waveform, 16000
+
 
 def calculate_units(model: keras.Model) -> int:
     """ Calculate number of the model parameters. """
@@ -81,7 +90,31 @@ def create_logger(file_path=None, level=20, name='asr') -> Logger:
     return logger
 
 
-def load_graph_from_gfile(gfile_path):
+def profile(function_name: str):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            print(f"Function {function_name} call invoked")
+            start_time = time.time()
+            res = func(*args, **kwargs)
+            print(f"Fucntion {function_name} call ended "
+                  f"in {time.time() - start_time}")
+            return res
+        return wrapper
+    return decorator
+
+def get_renamed_model(source_model):
+    def clone_func_reset_name(layer):
+        original_config = layer.get_config()
+        del original_config['name']
+        return layer.__class__.from_config(original_config)
+    
+    new_model = tf.keras.models.clone_model(source_model, clone_function=clone_func_reset_name)
+    new_model.set_weights(source_model.get_weights())
+    
+    return new_model
+
+
+def load_graph_from_gfile(gfile_path, verbose=False):
     """
     Loads graph from a ForzenGraph (.pb) file and extracts values of
     tensors
@@ -99,10 +132,12 @@ def load_graph_from_gfile(gfile_path):
         names = []
         for t in graph_nodes:
             names.append(t.name)
-        print(names)
+        if verbose:
+            print(names)
         all_vars = tf.compat.v1.get_collection(
             tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES)
-        print(all_vars)
+        if verbose:
+            print(all_vars)
         for n in graph_nodes:
             if n.op == "Const":
                 wts[n.name] = tensor_util.MakeNdarray(

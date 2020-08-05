@@ -15,8 +15,10 @@ class FeaturesExtractor:
         lengths = np.array([len(feature) for feature in features])
 
         X = self.align(features).astype(np.float32)
-        if self.standardize:
+        if self.standardize == "per_feature":
             X = self.standardize_batch(X, lengths, how=self.standardize)
+        elif self.standardize is not None:
+            raise AttributeError(f"Only per_feature standartization mode is supported. {self.standardize} was supplied")
         return X, lengths
 
     @abc.abstractmethod

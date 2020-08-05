@@ -67,3 +67,18 @@ class Dataset(keras.utils.Sequence):
     def shuffle_indices(self):
         """ Set up the order of return batches. """
         np.random.shuffle(self._indices)
+
+        
+def map_dataset(dataset, func):
+    def decorator(get_batch_func):
+        def new_get_batch(i):
+            return func(get_batch_func(i))
+        return new_get_batch
+    
+    dataset.get_batch = decorator(dataset.get_batch)
+    return dataset
+
+
+def cache_dataset(dataset):
+    dataset.get_batch = lru_cache(max_size=None)(dataset.get_batch)
+    return dataset

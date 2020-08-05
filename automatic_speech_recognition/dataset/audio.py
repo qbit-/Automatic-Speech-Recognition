@@ -12,10 +12,11 @@ class Audio(Dataset):
     transcriptions. The audio files are read and then return with
     transcriptions. Now, we support only csv files.
     """
-    def __init__(self, *args, use_filesizes=True, **kwargs):
+    def __init__(self, *args, use_filesizes=True, librosa_read=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.sr = None
         self.use_filesizes = use_filesizes
+        self.librosa_read = librosa_read
 
     @classmethod
     def from_csv(cls, file_path: str,
@@ -40,8 +41,12 @@ class Audio(Dataset):
         references = self._references[start:end]
         paths, transcripts = (references.path,
                               references.transcript.tolist())
-        batch_audio_data = [utils.read_audio(file_path) for file_path
-                            in paths]
+        if self.librosa_read:
+            batch_audio_data = [utils.read_audio(file_path) for file_path
+                                in paths]
+        else:
+            batch_audio_data = [utils.tf_read_audio(file_path) for file_path
+                                in paths]
 
         batch_srs = [data[1] for data in batch_audio_data]
         batch_audio = [data[0] for data in batch_audio_data]
