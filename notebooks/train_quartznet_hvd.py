@@ -203,7 +203,7 @@ def train_model(filename, dataset_idx, val_dataset_idx=None, initial_lr=0.001,
     if hvd.rank() == 0:
         print(f'Elapsed time: {elapsed}')
         model.save_weights(prefix + '-final-{loss:.2f}.h5')
-        with os.path.join(model_dir, prefix + '-hist.p', 'wb') as fp:
+        with open(os.path.join(model_dir, prefix + '-hist.p'), 'wb') as fp:
             pickle.dump(hist.history, fp)
 
 
