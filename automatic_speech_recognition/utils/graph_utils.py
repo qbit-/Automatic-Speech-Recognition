@@ -113,7 +113,7 @@ def merge_conv_dense(conv, dense):
     # set weights to a composition of both linear layers
     new_conv.set_weights([new_conv_weight, new_conv_bias])
     
-    return new_dense
+    return new_сщтм
 
 
 def merge_dense_lstm(dense, lstm):

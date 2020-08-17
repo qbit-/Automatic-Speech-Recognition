@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=32
-#SBATCH --partition gpu_small
-#SBATCH --gres=gpu:4
-#SBATCH --time=1-00:0:00
+#SBATCH --ntasks-per-node=1
+#SBATCH --partition gpu_devel
+#SBATCH --gres=gpu:1
+#SBATCH --time=10:0:00
 #SBATCH --output ./logs/job_-%J.log
 #SBATCH --error ./logs/job-%J.errorlog
 
