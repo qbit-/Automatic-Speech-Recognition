@@ -225,6 +225,8 @@ for tol in [1.01, 1.05, 1.1]:
         losses, wers, cers = get_maxvol_stats(ranks, deepspeech, 
                                               change_layers=('lstm_1', 'dense_2', 'dense_3', 'dense_4'), 
                                               maxvol_type=maxvol_type, 
+                                                                                                tol=tol,
+
                                               verbose=True)
         np.save(f'./maxvol_stats/{maxvol_type}_tol{tol}_wers.npy', np.array(wers))
         np.save(f'./maxvol_stats/{maxvol_type}_tol{tol}_cers.npy', np.array(cers))

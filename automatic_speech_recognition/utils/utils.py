@@ -102,13 +102,19 @@ def profile(function_name: str):
         return wrapper
     return decorator
 
+
 def get_renamed_model(source_model):
-    def clone_func_reset_name(layer):
+    assert isinstance(source_model, keras.Sequential)
+    
+    def clone_func_reset_name(layer, **kwargs):
         original_config = layer.get_config()
         del original_config['name']
         return layer.__class__.from_config(original_config)
     
-    new_model = tf.keras.models.clone_model(source_model, clone_function=clone_func_reset_name)
+    new_model = tf.keras.Sequential()
+    new_model.add(keras.Input(shape=source_model.input_shape[1:]))
+    for i, layer in enumerate(source_model.layers):
+        new_model.add(clone_func_reset_name(layer))
     new_model.set_weights(source_model.get_weights())
     
     return new_model

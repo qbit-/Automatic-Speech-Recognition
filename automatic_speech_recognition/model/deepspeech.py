@@ -84,6 +84,7 @@ def get_deepspeech(input_dim, output_dim,
         x = layers.Dense(output_dim, name='dense_5')(x)
 
         model = keras.Model(input_tensor, x, name='DeepSpeech')
+        model = keras.Sequential(model.layers)
 
     if is_mixed_precision:  # revert policy
         policy = mixed_precision.Policy('float32')

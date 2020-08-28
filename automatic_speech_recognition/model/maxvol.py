@@ -1,30 +1,31 @@
 from tensorflow import keras
 import tensorflow as tf
 import numpy as np
-from ..utils import apply_dense, apply_lstm, merge_conv_dense
+from ..utils import get_dense, get_lstm, merge_conv_dense
 
-def apply_maxvol_decomposed_dense(input_tensor, dense_layer, activation, compact_v, maxvol_idxs):
+def get_maxvol_decomposed_dense(dense_layer, activation, compact_v, maxvol_idxs):
     if isinstance(activation, str):
         activation = keras.layers.Activation(activation)
     W, b = dense_layer.get_weights()
     
-    out = apply_dense(input_tensor, W[:, maxvol_idxs], b[maxvol_idxs])
-    out = activation(out)
-    out = apply_dense(out, np.linalg.pinv(compact_v[maxvol_idxs]).T)
-    out = apply_dense(out, compact_v.T)
-    return out
+    equivalent_layers = []
+    equivalent_layers.append(get_dense(W[:, maxvol_idxs], b[maxvol_idxs]))
+    equivalent_layers.append(activation)
+    equivalent_layers.append(get_dense(np.linalg.pinv(compact_v[maxvol_idxs]).T))
+    equivalent_layers.append(get_dense(compact_v.T))
+    return equivalent_layers
 
 
-def apply_maxvol_decomposed_conv(input_tensor, conv_layer, activation, compact_v, maxvol_idxs):
-    if isinstance(activation, str):
-        activation = keras.layers.Activation(activation)
-    W, b = dense_layer.get_weights()
+# def apply_maxvol_decomposed_conv(input_tensor, conv_layer, activation, compact_v, maxvol_idxs):
+#     if isinstance(activation, str):
+#         activation = keras.layers.Activation(activation)
+#     W, b = dense_layer.get_weights()
     
-    out = apply_dense(input_tensor, W[:, maxvol_idxs], b[maxvol_idxs])
-    out = activation(out)
-    out = apply_dense(out, np.linalg.pinv(compact_v[maxvol_idxs]).T)
-    out = apply_dense(out, compact_v.T)
-    return out
+#     out = apply_dense(input_tensor, W[:, maxvol_idxs], b[maxvol_idxs])
+#     out = activation(out)
+#     out = apply_dense(out, np.linalg.pinv(compact_v[maxvol_idxs]).T)
+#     out = apply_dense(out, compact_v.T)
+#     return out
 
 
 def get_maxvolled_lstm_weights(W1, W2, b, compact_v, maxvol_idxs):
@@ -40,10 +41,12 @@ def get_maxvolled_lstm_weights(W1, W2, b, compact_v, maxvol_idxs):
     return W1_new, W2_new, b_new
 
 
-def apply_maxvol_decomposed_lstm(input_tensor, lstm_layer, compact_v, maxvol_idxs):
+def get_maxvol_decomposed_lstm(lstm_layer, compact_v, maxvol_idxs):
     W1, W2, b = lstm_layer.get_weights()
     W1_new, W2_new, b_new = get_maxvolled_lstm_weights(W1, W2, b, compact_v, maxvol_idxs)
-    out = apply_lstm(input_tensor, W1_new, W2_new, b_new, return_sequences=lstm_layer.get_config()['return_sequences'])
-    out = apply_dense(out, np.linalg.pinv(compact_v[maxvol_idxs]).T)
-    out = apply_dense(out, compact_v.T)
-    return out
+    
+    equivalent_layers = []
+    equivalent_layers.append(get_lstm(W1_new, W2_new, b_new, return_sequences=lstm_layer.get_config()['return_sequences']))
+    equivalent_layers.append(get_dense(np.linalg.pinv(compact_v[maxvol_idxs]).T))
+    equivalent_layers.append(get_dense(compact_v.T))
+    return equivalent_layers
