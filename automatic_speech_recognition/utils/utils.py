@@ -89,8 +89,8 @@ def load_graph_from_gfile(gfile_path):
     gr = tf.Graph()
     wts = {}
     with tf.compat.v1.Session(graph=gr) as sess:
-        print("load graph")
-        with gfile.FastGFile(gfile_path, 'rb') as f:
+        logger.info("load graph")
+        with gfile.GFile(gfile_path, 'rb') as f:
             graph_def = tf.compat.v1.GraphDef()
         graph_def.ParseFromString(f.read())
         sess.graph.as_default()
@@ -99,10 +99,10 @@ def load_graph_from_gfile(gfile_path):
         names = []
         for t in graph_nodes:
             names.append(t.name)
-        print(names)
+        # print(names)
         all_vars = tf.compat.v1.get_collection(
             tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES)
-        print(all_vars)
+        # print(all_vars)
         for n in graph_nodes:
             if n.op == "Const":
                 wts[n.name] = tensor_util.MakeNdarray(

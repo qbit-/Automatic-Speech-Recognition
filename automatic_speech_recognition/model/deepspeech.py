@@ -133,7 +133,7 @@ def load_mozilla_deepspeech(
     for key in loaded_tensors.keys():
         # check if tensor really represents a weight tensor
         if loaded_tensors[key].size > 10 and 'Const' not in key:
-            print(
+            logger.info(
                 f'Found weight tensor {key} with '
                 f'shape {loaded_tensors[key].shape}')
             loaded_weights.append(loaded_tensors[key])
@@ -150,8 +150,8 @@ def load_mozilla_deepspeech(
         loaded_weights[9], loaded_weights[8],  # Dense 4
         loaded_weights[11], loaded_weights[10]  # Dense 5
     ]
-    print("Shapes of weights prepared to be loaded into keras model")
-    print([w.shape for w in keras_weights])
+    logger.info("Shapes of weights prepared to be loaded into keras model")
+    logger.info([w.shape for w in keras_weights])
 
     # Deepspeech specs are taken from Mozilla Deepspeech
     model = get_deepspeech(input_dim=26,
