@@ -20,7 +20,7 @@ echo ${@}
 #nodelist=`python get_nodelist.py --nl $SLURM_NODELIST --pn 4`
 #echo 'Will run on nodes:'
 #echo $nodelist
-# horovodrun -np 16 -H $nodelist ${@}
+# horovodrun -np 15 -H $nodelist ${@}
 # -H $nodelist \
 mpirun -np 32 \
     -bind-to none -map-by slot \
