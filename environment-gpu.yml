@@ -1,11 +1,13 @@
 name: Automatic-Speech-Recognition
 dependencies:
   - python=3.7.5
-  - tensorflow-gpu=2.2.0
   - pandas=0.25.3
   - pytables=3.6.1
   - pytest=5.3.2
   - testfixtures=6.10.3
   - pip:
+      - tensorflow-gpu==2.3.0
       - google-cloud-storage==1.23.0
       - librosa==0.7.2
+      - numba==0.48
+      - pydub==0.24.1
