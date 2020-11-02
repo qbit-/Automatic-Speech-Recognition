@@ -21,3 +21,4 @@ class GreedyDecoder:
         decoded = [np.array([k for k, _ in itertools.groupby(best_candidate)])
                    for best_candidate in best_candidates]
         return decoded
+

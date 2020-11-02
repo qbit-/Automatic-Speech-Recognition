@@ -7,7 +7,6 @@ from tensorflow.python.ops import gen_audio_ops as contrib_audio
 
 
 class TfMFCC(features.FeaturesExtractor):
-
     def __init__(self, features_num: int, standardize=None, sample_rate=16000, 
     winlen=0.032, winstep=0.02):
         super().__init__(standardize=standardize)
