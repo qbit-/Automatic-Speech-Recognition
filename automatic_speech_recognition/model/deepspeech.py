@@ -44,7 +44,7 @@ def get_deepspeech(input_dim, output_dim,
 
     max_seq_length = None
     if tflite_version:
-        max_seq_length = 5
+        max_seq_length = 1
 
     with tf.device('/gpu:0'):
         input_tensor = layers.Input([max_seq_length, input_dim], name='X')
@@ -65,11 +65,13 @@ def get_deepspeech(input_dim, output_dim,
 
         x = layers.TimeDistributed(
             layers.Dense(units), name='td_dense_2')(x)
+
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[1])(x)
 
         x = layers.TimeDistributed(
             layers.Dense(units), name='td_dense_3')(x)
+
         x = layers.ReLU(max_value=20)(x)
         x = layers.Dropout(rate=dropouts[2])(x)
 
