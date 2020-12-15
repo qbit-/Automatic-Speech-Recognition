@@ -23,6 +23,7 @@ def get_deepspeech(input_dim, output_dim,
                    dropouts=(0.05, 0.05, 0.05, 0, 0.05),
                    tflite_version=False,
                    is_mixed_precision=False,
+                   lstm_implementation=2,
                    random_state=1) -> keras.Model:
     """
     The `get_deepspeech` returns the graph definition of the DeepSpeech
@@ -76,7 +77,8 @@ def get_deepspeech(input_dim, output_dim,
         x = layers.Dropout(rate=dropouts[2])(x)
 
         x = layers.LSTM(units, return_sequences=True,
-                        name='lstm_1', unroll=tflite_version)(x)
+                        name='lstm_1', unroll=tflite_version,
+                        implementation=lstm_implementation)(x)
         x = layers.Dropout(rate=dropouts[3])(x)
 
         x = layers.TimeDistributed(

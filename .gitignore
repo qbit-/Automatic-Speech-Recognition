@@ -4,10 +4,12 @@
 *.ipynb_checkpoints
 *__pycache__
 
-# Do not include models
+# Do not include models and input files
 *.h5
 *.bin
 *.tflite
+*.pt
+*.csv
 
 # Specific masks for the notebooks folder
 notebooks/models/*
