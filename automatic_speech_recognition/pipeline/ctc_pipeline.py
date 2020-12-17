@@ -181,7 +181,7 @@ class CTCPipeline(Pipeline):
                 shape=[None, None, self.alphabet.size], dtype=tf.float32),
             tf.TensorSpec(shape=[None], dtype=tf.int32),
             tf.TensorSpec(shape=[None], dtype=tf.int32)
-        ))
+        ), experimental_relax_shapes=True)
 
         def mean_ctc_loss(labels, logits):
             return tf.reduce_mean(
