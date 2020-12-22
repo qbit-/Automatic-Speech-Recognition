@@ -12,30 +12,6 @@ from joblib import Parallel, delayed
 
 logging.basicConfig(level=logging.INFO)
 
-datasets = {
-    'dev-clean': {
-        'url': 'http://www.openslr.org/resources/12/dev-clean.tar.gz',
-    },
-    'dev-other': {
-        'url': 'http://www.openslr.org/resources/12/dev-other.tar.gz',
-    },
-    'test-clean': {
-        'url': 'http://www.openslr.org/resources/12/test-clean.tar.gz',
-    },
-    'test-other': {
-        'url': 'http://www.openslr.org/resources/12/test-other.tar.gz',
-    },
-    'train-clean-100': {
-        'url': 'http://www.openslr.org/resources/12/train-clean-100.tar.gz',
-    },
-    'train-clean-360': {
-        'url': 'http://www.openslr.org/resources/12/train-clean-360.tar.gz',
-    },
-    'train-other-500': {
-        'url': 'http://www.openslr.org/resources/12/train-other-500.tar.gz',
-    }
-}
-
 
 def extract_tar(tarfile, dest='.', strip_level=0):
     """
@@ -57,7 +33,7 @@ def extract_tar(tarfile, dest='.', strip_level=0):
 
 
 @delayed
-def convert_flac_to_wav(source: str, dest: str, keep_original=False):
+def convert_mp3_to_wav(source: str, dest: str, keep_original=False):
     import librosa
     if os.path.isfile(dest):
         logging.info(
@@ -71,7 +47,7 @@ def convert_flac_to_wav(source: str, dest: str, keep_original=False):
         os.remove(source)
 
 
-def transcode_flac_wav_recursive(path, keep_original=False, force_overwrite=False):
+def transcode_mp3_wav_recursive(path, keep_original=False, force_overwrite=False):
     """
     For any MP3 file found in path creates a corresponding WAV file
     :param path: top dir of the dataset
@@ -79,58 +55,13 @@ def transcode_flac_wav_recursive(path, keep_original=False, force_overwrite=Fals
     :return: None if successfull
     """
     out = Parallel(n_jobs=4, verbose=1)(
-        convert_flac_to_wav(
-            filename, filename.replace('.flac', '.wav'), keep_original=keep_original)
-            for filename in glob(path + '/**/*.flac', recursive=True)
+        convert_mp3_to_wav(
+            filename, filename.replace('.mp3', '.wav'), keep_original=keep_original)
+            for filename in glob(path + '/**/*.mp3', recursive=True)
             if (force_overwrite or
-                not os.path.isfile(filename.replace('.flac', '.wav'))
+                not os.path.isfile(filename.replace('.mp3', '.wav'))
                 ) # avoid extra work
     )
-
-
-def read_transcript(filename: str) -> List[Tuple[str, str]]:
-    """
-    Reads rows and splits them by first space
-    :param filename:
-    :return: tuples of (name, transcript)
-    """
-    with open(filename, 'r') as file:
-        result = [(line.strip().split(' ', 1)[0],
-                  line.strip().split(' ', 1)[1].lower())
-                  for line in file.readlines()]
-    return result
-
-
-def create_index_data(ds_name: str, index_dir: str, data_dir: str) -> pd.DataFrame:
-    """
-    Creates the index file which is suitable for the pipeline.
-    The file contains paths to audiofiles and the transcripts
-
-    :param index_dir: path where the index will be used.
-                All paths will be relative to this directory.
-    :param data_dir: path of the dataset. May be either absolute or relative
-    :return: pandas DataFrame with path, transcript and file size
-    """
-    dataset_path = os.path.join(data_dir, ds_name)
-    
-    @delayed
-    def gen_entry(filename, index_dir):
-        dirname = os.path.dirname(filename)
-        entry = pd.DataFrame(list(read_transcript(filename)), columns=['path', 'transcript'])
-        entry.path = entry.path.apply(
-            lambda x: os.path.relpath(
-                os.path.join(dirname, x + '.wav'), start=index_dir
-            )
-        )
-        return entry
-    
-    entries = Parallel(n_jobs=4, verbose=1)(
-        gen_entry(filename, index_dir)
-        for filename in glob(dataset_path + '/**/*.trans.txt', recursive=True)
-    )
-    index_data = pd.concat(entries)
-    index_data['filesize'] = index_data.path.apply(os.path.getsize)
-    return index_data
 
 
 @delayed
@@ -177,6 +108,33 @@ def create_augmentation_data(
     )
 
 
+def create_index_data(raw_index: pd.DataFrame, index_dir: str, data_dir: str) -> pd.DataFrame:
+    """
+    Creates the index file which is suitable for the pipeline.
+    The file contains paths to audiofiles, the transcripts and the
+    file sizes
+
+    :param raw_index: index in the original format
+    :param index_dir: path where the index will be used
+    :param data_dir: path where the dataset is located
+    :return: index
+    """
+    index_data = pd.DataFrame(
+        zip(
+            raw_index.path.apply(
+                lambda x: os.path.relpath(
+                    os.path.join(data_dir, 'clips', x.split('.')[0]+'.wav'),
+                    start=index_dir)
+                ),
+            raw_index.sentence.str.replace(r'[^a-zA-Z\s\']', '').str.lower() # only alphabet + blank + apostroph
+        ),
+        columns=['path', 'transcript']
+    )
+    index_data['filesize'] = index_data.path.apply(os.path.getsize)
+
+    return index_data
+
+
 def extend_index_for_augmentation(index_data) -> pd.DataFrame:
     """
     Takes the index DataFrame and extends it with augmentation data
@@ -197,47 +155,57 @@ def extend_index_for_augmentation(index_data) -> pd.DataFrame:
     return pd.concat([index_data, new_index_data], ignore_index=True)
 
 
-def main(ds_name: str, index_dir: str, data_dir: str, augment: bool = False, force_overwrite:bool = False):
+def main(ds_name: str, index_dir: str, data_dir: str,
+         augment: bool = False, url: str=None, force_overwrite: bool=False):
     """
     :param ds_name: name of the dataset to use
     :param index_dir: current work dir, where index will be placed
     :param data_dir: location where the dataset will be placed
-    :param augment: if creation of the augmented sound files is requested
+    :param augment: optional, if creation of the augmented sound files is requested
+    :param url: optional, download url
+    :param force_overwrite: optional, if overwriting of audio files during
+                            data preparation is needed (slower)
     """
-    url = datasets[ds_name]['url']
-
-    tar_file_name = url.split('/')[-1]
-    audio_data_dir = os.path.join(
-        data_dir, tar_file_name.split('.', 1)[0])
+    
+    if url:
+        tar_file_name = url.split('/')[-1].split('?')[0]
+    else:
+        tar_file_name = 'en.tar.gz'
 
     # Prepare main dataset
+    audio_data_dir = os.path.join(data_dir, 'clips')
+
     if not os.path.isdir(audio_data_dir):
         logging.info(f'Dataset dir: {audio_data_dir} not found')
         if not os.path.isfile(tar_file_name):
             logging.info(f'Not found tar file {tar_file_name}')
+            if not url:
+                raise ValueError('No dataset and no url provided. Quit')
             logging.info('Downloading tar file')
             urllib.request.urlretrieve(url, tar_file_name)
-            logging.info(f'Successfully downloaded tar file.')
+            logging.info(f'Successfully downloaded {tar_file_name}')
 
         logging.info(f'Extracting into {data_dir}')
         tar = tarfile.open(tar_file_name, "r:gz")
-        extract_tar(tar, dest=data_dir, strip_level=1) # remove the enclosing LibriSpeech folder
+        extract_tar(tar, data_dir, strip_level=2)
         tar.close()
 
     # Transcode FLAC to WAV and create an index
-    logging.info('Transcoding FLAC files')
-    transcode_flac_wav_recursive(audio_data_dir)
+    logging.info('Transcoding MP3 files')
+    transcode_mp3_wav_recursive(audio_data_dir)
 
     if augment:
         logging.info('Creating augmented sound files')
         create_augmentation_data(audio_data_dir, speed_augment_by=0.1)
 
     logging.info('Generating index data')
+    
+    raw_index = pd.read_csv(os.path.join(data_dir, ds_name + '.tsv'), sep='\t', low_memory=False)
     index_data = create_index_data(
-        ds_name, index_dir, data_dir)
+        raw_index, index_dir, data_dir)
     if augment:
         index_data = extend_index_for_augmentation(index_data)
-    index_data.to_csv(os.path.join(index_dir, f'libri-{ds_name}-index.csv'))
+    index_data.to_csv(os.path.join(index_dir, f'cv-{ds_name}-index.csv'))
 
 
 if __name__ == '__main__':
@@ -245,7 +213,7 @@ if __name__ == '__main__':
         description='Prepare LibriSpeech data')
     parser.add_argument('--type', type=str,
                         help='which dataset to download',
-                        default='dev-clean',
+                        default='dev',
                         choices=datasets.keys())
     parser.add_argument('--data_dir', type=str,
                         help='where to place final dataset',
@@ -258,11 +226,13 @@ if __name__ == '__main__':
                         help='if generation of augmented'
                         ' files is requested',
                         default=False)
+    parser.add_argument('--url', type=str,
+                        help='optional url to download Common Voice',
+                        default=None)
     parser.add_argument('--force_overwrite', type=bool,
                         help='force overwriting audio files during'
                         ' dataset preparation (slower)',
                         default=False)
     args = parser.parse_args()
     main(args.type, args.index_dir, args.data_dir,
-         args.augment, args.force_overwrite)
-
+         args.augment, args.url, args.force_overwrite)
