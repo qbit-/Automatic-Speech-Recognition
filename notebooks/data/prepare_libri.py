@@ -71,14 +71,15 @@ def convert_flac_to_wav(source: str, dest: str, keep_original=False):
         os.remove(source)
 
 
-def transcode_flac_wav_recursive(path, keep_original=False, force_overwrite=False):
+def transcode_flac_wav_recursive(path, keep_original=False, force_overwrite=False, n_jobs: int=4):
     """
     For any MP3 file found in path creates a corresponding WAV file
     :param path: top dir of the dataset
     :param keep_original: if original MP3 file should be kept
+    :param n_jobs: number of parallel Joblib tasks
     :return: None if successfull
     """
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         convert_flac_to_wav(
             filename, filename.replace('.flac', '.wav'), keep_original=keep_original)
             for filename in glob(path + '/**/*.flac', recursive=True)
@@ -101,7 +102,7 @@ def read_transcript(filename: str) -> List[Tuple[str, str]]:
     return result
 
 
-def create_index_data(ds_name: str, index_dir: str, data_dir: str) -> pd.DataFrame:
+def create_index_data(ds_name: str, index_dir: str, data_dir: str, n_jobs: int=4) -> pd.DataFrame:
     """
     Creates the index file which is suitable for the pipeline.
     The file contains paths to audiofiles and the transcripts
@@ -109,6 +110,7 @@ def create_index_data(ds_name: str, index_dir: str, data_dir: str) -> pd.DataFra
     :param index_dir: path where the index will be used.
                 All paths will be relative to this directory.
     :param data_dir: path of the dataset. May be either absolute or relative
+    :param n_jobs: number of parallel Joblib tasks
     :return: pandas DataFrame with path, transcript and file size
     """
     dataset_path = os.path.join(data_dir, ds_name)
@@ -124,7 +126,7 @@ def create_index_data(ds_name: str, index_dir: str, data_dir: str) -> pd.DataFra
         )
         return entry
     
-    entries = Parallel(n_jobs=4, verbose=1)(
+    entries = Parallel(n_jobs=n_jobs, verbose=1)(
         gen_entry(filename, index_dir)
         for filename in glob(dataset_path + '/**/*.trans.txt', recursive=True)
     )
@@ -150,14 +152,17 @@ def change_sound_speed(source: str, dest: str, speed: float):
 
 
 def create_augmentation_data(
-        dataset_path: str, speed_augment_by: float = 0.1, force_overwrite=False):
+        dataset_path: str, speed_augment_by: float = 0.1, force_overwrite=False, n_jobs: int=4):
     """
     For each audio file in the dataset creates its slower and faster version.
 
     :param dataset_path: path of the dataset. May be either absolute or
                 relative
+    :param speed_augment_by: speed augment by this number (parts of 1)
+    :param force_overwrite: force overwriting of exiting augmentation files
+    :param n_jobs: number of parallel Joblib tasks
     """
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         change_sound_speed(
             filename, filename.replace('.wav', '-FAST.wav'), speed=1 + speed_augment_by)
             for filename in glob(dataset_path + '/**/*.wav', recursive=True)
@@ -166,7 +171,7 @@ def create_augmentation_data(
                      not os.path.isfile(filename.replace('.wav', '-FAST.wav'))) # avoid extra work
                 )
     )
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         change_sound_speed(
             filename, filename.replace('.wav', '-SLOW.wav'), speed=1 - speed_augment_by)
             for filename in glob(dataset_path + '/**/*.wav', recursive=True)
@@ -197,12 +202,15 @@ def extend_index_for_augmentation(index_data) -> pd.DataFrame:
     return pd.concat([index_data, new_index_data], ignore_index=True)
 
 
-def main(ds_name: str, index_dir: str, data_dir: str, augment: bool = False, force_overwrite:bool = False):
+def main(ds_name: str, index_dir: str, data_dir: str,
+         augment: bool = False, force_overwrite:bool = False,
+         n_jobs: int=4):
     """
     :param ds_name: name of the dataset to use
     :param index_dir: current work dir, where index will be placed
     :param data_dir: location where the dataset will be placed
     :param augment: if creation of the augmented sound files is requested
+    :param n_jobs: nuber of parallel Joblib tasks
     """
     url = datasets[ds_name]['url']
 
@@ -226,15 +234,15 @@ def main(ds_name: str, index_dir: str, data_dir: str, augment: bool = False, for
 
     # Transcode FLAC to WAV and create an index
     logging.info('Transcoding FLAC files')
-    transcode_flac_wav_recursive(audio_data_dir)
+    transcode_flac_wav_recursive(audio_data_dir, n_jobs=n_jobs)
 
     if augment:
         logging.info('Creating augmented sound files')
-        create_augmentation_data(audio_data_dir, speed_augment_by=0.1)
+        create_augmentation_data(audio_data_dir, speed_augment_by=0.1, n_jobs=n_jobs)
 
     logging.info('Generating index data')
     index_data = create_index_data(
-        ds_name, index_dir, data_dir)
+        ds_name, index_dir, data_dir, n_jobs=n_jobs)
     if augment:
         index_data = extend_index_for_augmentation(index_data)
     index_data.to_csv(os.path.join(index_dir, f'libri-{ds_name}-index.csv'))
@@ -262,7 +270,11 @@ if __name__ == '__main__':
                         help='force overwriting audio files during'
                         ' dataset preparation (slower)',
                         default=False)
+    parser.add_argument('--n_jobs', type=int,
+                        help='number of parallel Joblib processes',
+                        default=4)
+
     args = parser.parse_args()
     main(args.type, args.index_dir, args.data_dir,
-         args.augment, args.force_overwrite)
+         args.augment, args.force_overwrite, args.n_jobs)
 

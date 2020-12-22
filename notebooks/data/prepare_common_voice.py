@@ -47,14 +47,15 @@ def convert_mp3_to_wav(source: str, dest: str, keep_original=False):
         os.remove(source)
 
 
-def transcode_mp3_wav_recursive(path, keep_original=False, force_overwrite=False):
+def transcode_mp3_wav_recursive(path, keep_original=False, force_overwrite=False, n_jobs: int=4):
     """
     For any MP3 file found in path creates a corresponding WAV file
     :param path: top dir of the dataset
     :param keep_original: if original MP3 file should be kept
+    :param n_jobs: number of parallel Joblib tasks
     :return: None if successfull
     """
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         convert_mp3_to_wav(
             filename, filename.replace('.mp3', '.wav'), keep_original=keep_original)
             for filename in glob(path + '/**/*.mp3', recursive=True)
@@ -81,14 +82,18 @@ def change_sound_speed(source: str, dest: str, speed: float):
 
 
 def create_augmentation_data(
-        dataset_path: str, speed_augment_by: float = 0.1, force_overwrite=False):
+        dataset_path: str, speed_augment_by: float = 0.1, force_overwrite=False, n_jobs: int=4):
     """
     For each audio file in the dataset creates its slower and faster version.
 
     :param dataset_path: path of the dataset. May be either absolute or
                 relative
+    :param speed_augment_by: speed augment by this number (parts of 1)
+    :param force_overwrite: force overwriting of exiting augmentation files
+    :param n_jobs: number of parallel Joblib tasks
+    :return: None
     """
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         change_sound_speed(
             filename, filename.replace('.wav', '-FAST.wav'), speed=1 + speed_augment_by)
             for filename in glob(dataset_path + '/**/*.wav', recursive=True)
@@ -97,7 +102,7 @@ def create_augmentation_data(
                      not os.path.isfile(filename.replace('.wav', '-FAST.wav'))) # avoid extra work
                 )
     )
-    out = Parallel(n_jobs=4, verbose=1)(
+    out = Parallel(n_jobs=n_jobs, verbose=1)(
         change_sound_speed(
             filename, filename.replace('.wav', '-SLOW.wav'), speed=1 - speed_augment_by)
             for filename in glob(dataset_path + '/**/*.wav', recursive=True)
@@ -156,7 +161,8 @@ def extend_index_for_augmentation(index_data) -> pd.DataFrame:
 
 
 def main(ds_name: str, index_dir: str, data_dir: str,
-         augment: bool = False, url: str=None, force_overwrite: bool=False):
+         augment: bool = False, url: str=None,
+         force_overwrite: bool=False, n_jobs: int=4):
     """
     :param ds_name: name of the dataset to use
     :param index_dir: current work dir, where index will be placed
@@ -165,6 +171,7 @@ def main(ds_name: str, index_dir: str, data_dir: str,
     :param url: optional, download url
     :param force_overwrite: optional, if overwriting of audio files during
                             data preparation is needed (slower)
+    :param n_jobs: nuber of parallel Joblib tasks
     """
     
     if url:
@@ -192,11 +199,11 @@ def main(ds_name: str, index_dir: str, data_dir: str,
 
     # Transcode FLAC to WAV and create an index
     logging.info('Transcoding MP3 files')
-    transcode_mp3_wav_recursive(audio_data_dir)
+    transcode_mp3_wav_recursive(audio_data_dir, n_jobs=n_jobs)
 
     if augment:
         logging.info('Creating augmented sound files')
-        create_augmentation_data(audio_data_dir, speed_augment_by=0.1)
+        create_augmentation_data(audio_data_dir, speed_augment_by=0.1, n_jobs=n_jobs)
 
     logging.info('Generating index data')
     
@@ -233,6 +240,10 @@ if __name__ == '__main__':
                         help='force overwriting audio files during'
                         ' dataset preparation (slower)',
                         default=False)
+    parser.add_argument('--n_jobs', type=int,
+                        help='number of parallel Joblib processes',
+                        default=4)
+
     args = parser.parse_args()
     main(args.type, args.index_dir, args.data_dir,
-         args.augment, args.url, args.force_overwrite)
+         args.augment, args.url, args.force_overwrite, args.n_jobs)
