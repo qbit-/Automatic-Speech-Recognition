@@ -219,9 +219,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Prepare LibriSpeech data')
     parser.add_argument('--type', type=str,
-                        help='which dataset to download',
+                        help='which dataset to use for index',
                         default='dev',
-                        choices=datasets.keys())
+                        choices=['train', 'dev', 'test', 'validated', 'invalidated', 'other'])
     parser.add_argument('--data_dir', type=str,
                         help='where to place final dataset',
                         default='.')
