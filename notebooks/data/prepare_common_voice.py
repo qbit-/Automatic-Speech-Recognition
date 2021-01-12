@@ -197,7 +197,7 @@ def main(ds_name: str, index_dir: str, data_dir: str,
         extract_tar(tar, data_dir, strip_level=2)
         tar.close()
 
-    # Transcode FLAC to WAV and create an index
+    # Transcode MP3 to WAV and create an index
     logging.info('Transcoding MP3 files')
     transcode_mp3_wav_recursive(audio_data_dir, n_jobs=n_jobs)
 
@@ -217,9 +217,9 @@ def main(ds_name: str, index_dir: str, data_dir: str,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description=('Prepare LibriSpeech data\n'
+        description='Prepare CommonVoice data\n'
             'example:\n'
-            'python prepare_libri.py --type dev --data_dir /where/clips/folder/will/be \\ \n'
+            'python prepare_common_voice.py --type dev --data_dir /where/clips/folder/will/be \\ \n'
             '--index_dir /where/index/will/be/placed/and/used --augment=true',
         formatter_class=argparse.RawDescriptionHelpFormatter
         )
@@ -232,7 +232,7 @@ if __name__ == '__main__':
                         default='.')
     parser.add_argument('--index_dir', type=str,
                         help='path relative to which all'
-                             'audio paths will be indexed',
+                             ' audio paths will be indexed',
                         default='.')
     parser.add_argument('--augment', type=bool,
                         help='if generation of augmented'
