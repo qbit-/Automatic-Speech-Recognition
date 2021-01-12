@@ -217,7 +217,12 @@ def main(ds_name: str, index_dir: str, data_dir: str,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Prepare LibriSpeech data')
+        description=('Prepare LibriSpeech data\n'
+            'example:\n'
+            'python prepare_libri.py --type dev --data_dir /where/clips/folder/will/be \\ \n'
+            '--index_dir /where/index/will/be/placed/and/used --augment=true',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+        )
     parser.add_argument('--type', type=str,
                         help='which dataset to use for index',
                         default='dev',
