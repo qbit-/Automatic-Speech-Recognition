@@ -162,15 +162,19 @@ def extend_index_for_augmentation(index_data) -> pd.DataFrame:
 
 def main(ds_name: str, index_dir: str, data_dir: str,
          augment: bool = False, url: str=None,
-         force_overwrite: bool=False, n_jobs: int=4):
+         force_overwrite: bool=False, 
+         skip_transcode: bool=False,
+         n_jobs: int=4):
     """
     :param ds_name: name of the dataset to use
     :param index_dir: current work dir, where index will be placed
     :param data_dir: location where the dataset will be placed
     :param augment: optional, if creation of the augmented sound files is requested
     :param url: optional, download url
+    :param keep_original: optional, if keeping original mp3 files
     :param force_overwrite: optional, if overwriting of audio files during
                             data preparation is needed (slower)
+    :param skip_transcode: optional, if skipping converting mp3 to wav (faster)
     :param n_jobs: nuber of parallel Joblib tasks
     """
     
@@ -197,9 +201,11 @@ def main(ds_name: str, index_dir: str, data_dir: str,
         extract_tar(tar, data_dir, strip_level=2)
         tar.close()
 
-    # Transcode MP3 to WAV and create an index
-    logging.info('Transcoding MP3 files')
-    transcode_mp3_wav_recursive(audio_data_dir, n_jobs=n_jobs)
+    if not args.skip_transcode:
+        # Transcode MP3 to WAV and create an index
+        logging.info('Transcoding MP3 files')
+        transcode_mp3_wav_recursive(audio_data_dir, keep_original=args.keep_original,
+                                    force_overwrite=args.force_overwrite, n_jobs=n_jobs)
 
     if augment:
         logging.info('Creating augmented sound files')
@@ -227,28 +233,30 @@ if __name__ == '__main__':
                         help='which dataset to use for index',
                         default='dev',
                         choices=['train', 'dev', 'test', 'validated', 'invalidated', 'other'])
-    parser.add_argument('--data_dir', type=str,
+    parser.add_argument('--data-dir', type=str,
                         help='where to place final dataset',
                         default='.')
-    parser.add_argument('--index_dir', type=str,
+    parser.add_argument('--index-dir', type=str,
                         help='path relative to which all'
                              ' audio paths will be indexed',
                         default='.')
-    parser.add_argument('--augment', type=bool,
+    parser.add_argument('--augment', action='store_true',
                         help='if generation of augmented'
-                        ' files is requested',
-                        default=False)
+                        ' files is requested')
     parser.add_argument('--url', type=str,
                         help='optional url to download Common Voice',
                         default=None)
-    parser.add_argument('--force_overwrite', type=bool,
+    parser.add_argument('--keep-original', action='store_true',
+                        help='keep original mp3 audiofiles')
+    parser.add_argument('--force-overwrite', action='store_true',
                         help='force overwriting audio files during'
-                        ' dataset preparation (slower)',
-                        default=False)
-    parser.add_argument('--n_jobs', type=int,
+                        ' dataset preparation (slower)')
+    parser.add_argument('--skip-transcode', action='store_true',
+                        help='skip converting mp3 to wav (faster)')
+    parser.add_argument('--n-jobs', type=int,
                         help='number of parallel Joblib processes',
                         default=4)
 
     args = parser.parse_args()
     main(args.type, args.index_dir, args.data_dir,
-         args.augment, args.url, args.force_overwrite, args.n_jobs)
+         args.augment, args.url, args.force_overwrite, args.skip_transcode, args.n_jobs)
