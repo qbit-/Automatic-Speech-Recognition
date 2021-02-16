@@ -79,6 +79,12 @@ class B_block(keras.Model):
             }
         )
         return config
+    
+    @classmethod
+    def from_config(cls, config):
+        # in tensorflow2.2 instead of keras.layer.from_config method the engine.network.from_config is used
+        return cls(**config)
+
 
 
 def get_quartznet(input_dim, output_dim,
