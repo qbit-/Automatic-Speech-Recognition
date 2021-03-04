@@ -12,19 +12,25 @@ class Small_block(keras.Model):
     """
     Time-channel separable 1D convolutional module
     """
-    def __init__(self, kernel_size, filters, residual=False):
-        super(Small_block, self).__init__(name='small_block')
+    def __init__(self, kernel_size, filters, layer_name,
+                 residual=False, use_biases=False, use_batchnorms=True):
+        super(Small_block, self).__init__(name=layer_name)
         self.conv = layers.SeparableConv1D(
-            filters, kernel_size, padding='same', use_bias=False)
-        self.bn = layers.BatchNormalization(momentum=0.9)
+            filters, kernel_size, padding='same', 
+            use_bias=use_biases, bias_initializer='zeros', name='sepconv')
+        if use_batchnorms: self.bn = layers.BatchNormalization(momentum=0.9)
+        else: self.bn = None
         self.residual = residual
         self.relu = layers.ReLU()
         self.kernel_size = kernel_size
         self.filters = filters
+        self.layer_name = layer_name
+        self.use_biases = use_biases
+        self.use_batchnorms = use_batchnorms
 
     def call(self, input_tensor, residual_value, training=False):
         x = self.conv(input_tensor)
-        x = self.bn(x, training=training)
+        if self.bn is not None: x = self.bn(x, training=training)
         if self.residual:
             x += residual_value
         x = self.relu(x)
@@ -37,6 +43,9 @@ class Small_block(keras.Model):
                 'kernel_size': self.kernel_size,
                 'filters': self.filters,
                 'residual': self.residual,
+                'layer_name': self.layer_name,
+                'use_biases': self.use_biases,
+                'use_batchnorms': self.use_batchnorms
             }
         )
         return config
@@ -46,23 +55,29 @@ class B_block(keras.Model):
     """
     Base residual block of the Quartznet model
     """
-    def __init__(self, kernel_size, filters, n_small_blocks, layer_name):
+    def __init__(self, kernel_size, filters, n_small_blocks, layer_name, 
+                 use_biases=False, use_batchnorms=True):
         super(B_block, self).__init__(name=layer_name)
         self.small_blocks = []
         for i in range(n_small_blocks - 1):
-            self.small_blocks.append(Small_block(kernel_size, filters))
-        self.res_block = Small_block(kernel_size, filters, residual=True)
+            self.small_blocks.append(Small_block(kernel_size, filters, layer_name='SB-{}'.format(i),
+                                                 use_biases=use_biases, use_batchnorms=use_batchnorms))
+        self.res_block = Small_block(kernel_size, filters, layer_name='SB-res', residual=True,
+                                     use_biases=use_biases, use_batchnorms=use_batchnorms)
         self.conv = layers.Conv1D(
-            filters, 1, padding='same', use_bias=False)
-        self.bn = layers.BatchNormalization(momentum=0.9)
+            filters, 1, padding='same', use_bias=use_biases, bias_initializer='zeros', name='conv')
+        if use_batchnorms: self.bn = layers.BatchNormalization(momentum=0.9)
+        else: self.bn = None
         self.kernel_size = kernel_size
         self.filters = filters
         self.n_small_blocks = n_small_blocks
         self.layer_name = layer_name
+        self.use_biases = use_biases
+        self.use_batchnorms = use_batchnorms
 
     def call(self, x, training=False):
         residual_value = self.conv(x)
-        residual_value = self.bn(residual_value, training=training)
+        if self.bn is not None: residual_value = self.bn(residual_value, training=training)
         for i in range(len(self.small_blocks)):
             x = self.small_blocks[i](x, None, training=training)
         x = self.res_block(x, residual_value, training=training)
@@ -76,6 +91,8 @@ class B_block(keras.Model):
                 'filters': self.filters,
                 'n_small_blocks': self.n_small_blocks,
                 'layer_name': self.layer_name,
+                'use_biases': self.use_biases,
+                'use_batchnorms': self.use_batchnorms
             }
         )
         return config
@@ -94,6 +111,9 @@ def get_quartznet(input_dim, output_dim,
                   b_block_kernel_sizes=(33, 39, 51, 63, 75),
                   b_block_num_channels=(256, 256, 512, 512, 512),
                   num_small_blocks=5,
+                  use_biases=False,
+                  use_batchnorms=True,
+                  use_mask=False,
                   random_state=1) -> keras.Model:
     """
     Parameters
@@ -122,13 +142,13 @@ def get_quartznet(input_dim, output_dim,
 
     with tf.device('/cpu:0'):
         input_tensor = layers.Input([max_seq_length, input_dim], name='X')
-
-        x = layers.Masking()(input_tensor)
+        x = tf.identity(input_tensor)
+        if use_mask: x = layers.Masking()(x)
         # First encoder layer
         x = layers.SeparableConv1D(
             256, 33, padding='same', strides=2,
-            name='conv_1', use_bias=False)(x)
-        x = layers.BatchNormalization(name='BN-1', momentum=0.9)(x)
+            name='conv_1', use_bias=use_biases, bias_initializer='zeros')(x)
+        if use_batchnorms: x = layers.BatchNormalization(name='BN-1', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-1')(x)
 
         block_idx = 1
@@ -137,20 +157,22 @@ def get_quartznet(input_dim, output_dim,
             for bk in range(num_b_block_repeats):
                 x = B_block(
                     kernel_size, n_channels, num_small_blocks,
-                    f'B-{block_idx}')(x)
+                    f'B-{block_idx}',
+                    use_biases=use_biases, 
+                    use_batchnorms=use_batchnorms)(x)
                 block_idx += 1
 
         # First final layer
         x = layers.SeparableConv1D(
             512, 87, padding='same', name='conv_2',
-            dilation_rate=2, use_bias=False)(x)
-        x = layers.BatchNormalization(name='BN-2', momentum=0.9)(x)
+            dilation_rate=2, use_bias=use_biases, bias_initializer='zeros')(x)
+        if use_batchnorms: x = layers.BatchNormalization(name='BN-2', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-2')(x)
 
         # Second final layer
         x = layers.Conv1D(1024, 1, padding='same',
-                          name='conv_3', use_bias=False)(x)
-        x = layers.BatchNormalization(name='BN-3', momentum=0.9)(x)
+                          name='conv_3', use_bias=use_biases, bias_initializer='zeros')(x)
+        if use_batchnorms: x = layers.BatchNormalization(name='BN-3', momentum=0.9)(x)
         x = layers.ReLU(name='RELU-3')(x)
 
         # Third final layer
@@ -170,7 +192,8 @@ QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
 
 def load_nvidia_quartznet(
         enc_path="./data/JasperEncoder-STEP-247400.pt",
-        dec_path="./data/JasperDecoderForCTC-STEP-247400.pt"):
+        dec_path="./data/JasperDecoderForCTC-STEP-247400.pt",
+        use_biases=False):
     """
     The weights for Quartznet model (English)
     can be downloaded with the following command:
@@ -187,6 +210,8 @@ def load_nvidia_quartznet(
                           b_block_kernel_sizes=(33, 39, 51, 63, 75),
                           b_block_num_channels=(256, 256, 512, 512, 512),
                           num_small_blocks=5,
+                          use_biases=use_biases,
+                          use_batchnorms=True,
                           random_state=1)
 
     enc = torch.load(enc_path, map_location=torch.device('cpu'))
@@ -194,11 +219,13 @@ def load_nvidia_quartznet(
 
     # First encoder layer
     conv_1 = model.get_layer(name='conv_1')
-    conv_1.set_weights(
-        [enc['encoder.0.mconv.0.conv.weight'].cpu().permute(
+    new_weights = [
+        enc['encoder.0.mconv.0.conv.weight'].cpu().permute(
             2, 0, 1).numpy(),
-         enc['encoder.0.mconv.1.conv.weight'].cpu().permute(
-             2, 1, 0).numpy()])
+        enc['encoder.0.mconv.1.conv.weight'].cpu().permute(
+             2, 1, 0).numpy()]
+    if use_biases: new_weights.append(conv_1.bias.numpy())
+    conv_1.set_weights(new_weights)
     BN_1 = model.get_layer(name='BN-1')
     BN_1.set_weights([
         enc['encoder.0.mconv.2.weight'].cpu().numpy(),
@@ -210,30 +237,37 @@ def load_nvidia_quartznet(
     for i in range(1, 16):
         layer_name = f'B-{i}'
         b_block = model.get_layer(name=layer_name)
-
-        b_block.set_weights([
+        new_weights = [
             enc[(f'encoder.{i}.mconv.0.conv.weight')].cpu().permute(
                 2, 0, 1).numpy(),
             enc[(f'encoder.{i}.mconv.1.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()]
+        if use_biases: new_weights.append(tf.zeros(b_block.layers[0].layers[0].bias.shape))
+        new_weights.extend([
             enc[(f'encoder.{i}.mconv.2.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.2.bias')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.5.conv.weight')].cpu().permute(
                 2, 0, 1).numpy(),
             enc[(f'encoder.{i}.mconv.6.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()])
+        if use_biases: new_weights.append(tf.zeros(b_block.layers[0].layers[0].bias.shape))
+        new_weights.extend([
             enc[(f'encoder.{i}.mconv.7.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.7.bias')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.10.conv.weight')].cpu().permute(
                 2, 0, 1).numpy(),
             enc[(f'encoder.{i}.mconv.11.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()])
+        if use_biases: new_weights.append(tf.zeros(b_block.layers[0].layers[0].bias.shape))
+        new_weights.extend([
             enc[(f'encoder.{i}.mconv.12.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.12.bias')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.15.conv.weight')].cpu().permute(
                 2, 0, 1).numpy(),
             enc[(f'encoder.{i}.mconv.16.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()])
+        if use_biases: new_weights.append(tf.zeros(b_block.layers[0].layers[0].bias.shape))
+        new_weights.extend([
             enc[(f'encoder.{i}.mconv.17.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.17.bias')].cpu().numpy(),
 
@@ -252,28 +286,33 @@ def load_nvidia_quartznet(
             enc[(f'encoder.{i}.mconv.20.conv.weight')].cpu().permute(
                 2, 0, 1).numpy(),
             enc[(f'encoder.{i}.mconv.21.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()])
+        if use_biases: new_weights.append(tf.zeros(b_block.layers[0].layers[0].bias.shape))
+        new_weights.extend([
             enc[(f'encoder.{i}.mconv.22.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.22.bias')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.22.running_mean')].cpu().numpy(),
             enc[(f'encoder.{i}.mconv.22.running_var')].cpu().numpy(),
-
             # residual small block
             enc[(f'encoder.{i}.res.0.0.conv.weight')].cpu().permute(
-                2, 1, 0).numpy(),
+                2, 1, 0).numpy()])
+        if use_biases: new_weights.append(b_block.layers[-2].bias.numpy())
+        new_weights.extend([
             enc[(f'encoder.{i}.res.0.1.weight')].cpu().numpy(),
             enc[(f'encoder.{i}.res.0.1.bias')].cpu().numpy(),
             enc[(f'encoder.{i}.res.0.1.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.res.0.1.running_var')].cpu().numpy()
-        ])
+            enc[(f'encoder.{i}.res.0.1.running_var')].cpu().numpy()])
+        b_block.set_weights(new_weights)
 
     # First final layer
     conv_2 = model.get_layer(name='conv_2')
-    conv_2.set_weights(
-        [enc['encoder.16.mconv.0.conv.weight'].cpu().permute(
+    new_weights = [
+        enc['encoder.16.mconv.0.conv.weight'].cpu().permute(
             2, 0, 1).numpy(),
-         enc['encoder.16.mconv.1.conv.weight'].cpu().permute(
-             2, 1, 0).numpy()])
+        enc['encoder.16.mconv.1.conv.weight'].cpu().permute(
+             2, 1, 0).numpy()]
+    if use_biases: new_weights.append(conv_2.bias.numpy())
+    conv_2.set_weights(new_weights)
 
     BN_2 = model.get_layer(name='BN-2')
     BN_2.set_weights([
@@ -285,9 +324,11 @@ def load_nvidia_quartznet(
 
     # Second final layer
     conv_3 = model.get_layer(name='conv_3')
-    conv_3.set_weights(
-        [enc['encoder.17.mconv.0.conv.weight'].cpu().permute(
-            2, 1, 0).numpy()])
+    new_weights = [
+        enc['encoder.17.mconv.0.conv.weight'].cpu().permute(
+            2, 1, 0).numpy()]
+    if use_biases: new_weights.append(conv_3.bias.numpy())
+    conv_3.set_weights(new_weights)
     BN_3 = model.get_layer(name='BN-3')
     BN_3.set_weights([
         enc['encoder.17.mconv.1.weight'].cpu().numpy(),
