@@ -27,12 +27,11 @@ class Small_block(keras.Model):
         self.use_biases = use_biases
         self.use_batchnorms = use_batchnorms
 
-    def call(self, input_tensor, res_values, training=False):
+    def call(self, input_tensor, residual_value, training=False):
         x = self.conv(input_tensor)
         if self.bn is not None: x = self.bn(x, training=training)
         if self.residual:
-            for res_v in res_values:
-                x += res_v
+            x += residual_value
         x = self.relu(x)
         return x
 
@@ -55,7 +54,7 @@ class B_block(keras.Model):
     """
     Base residual block of the Quartznet model
     """
-    def __init__(self, kernel_size, filters, n_small_blocks, num_res_connections, layer_name,
+    def __init__(self, kernel_size, filters, n_small_blocks, layer_name,
                  use_biases=False, use_batchnorms=True):
         super(B_block, self).__init__(name=layer_name)
         self.small_blocks = []
@@ -64,14 +63,10 @@ class B_block(keras.Model):
                                                  use_biases=use_biases, use_batchnorms=use_batchnorms))
         self.res_block = Small_block(kernel_size, filters, layer_name='SB-res', residual=True,
                                      use_biases=use_biases, use_batchnorms=use_batchnorms)
-        self.res_convs = [layers.Conv1D(
-            filters, 1, padding='same', use_bias=use_biases, bias_initializer='zeros', name=f'res_conv_{i}')
-            for i in range(num_res_connections)]
-        if use_batchnorms: 
-            self.bns = [layers.BatchNormalization(
-                momentum=0.9, name=f'res_bn_{i}') for i in range(num_res_connections)]
-        else: 
-            self.bns = None
+        self.res_conv = layers.Conv1D(
+            filters, 1, padding='same', use_bias=use_biases, bias_initializer='zeros', name='conv')
+        if use_batchnorms: self.bn = layers.BatchNormalization(momentum=0.9)
+        else: self.bn = None
         self.kernel_size = kernel_size
         self.filters = filters
         self.n_small_blocks = n_small_blocks
@@ -79,13 +74,12 @@ class B_block(keras.Model):
         self.use_biases = use_biases
         self.use_batchnorms = use_batchnorms
 
-    def call(self, x, res_inputs, training=False):
-        res_values = [self.res_convs[i](y) for i, y in enumerate(res_inputs)]
-        if self.bns is not None: 
-            res_values = [self.bns[i](y, training=training) for i, y in enumerate(res_values)]
+    def call(self, x, training=False):
+        residual_value = self.res_conv(x)
+        if self.bn is not None: residual_value = self.bn(residual_value, training=training)
         for i in range(len(self.small_blocks)):
             x = self.small_blocks[i](x, None, training=training)
-        x = self.res_block(x, res_values, training=training)
+        x = self.res_block(x, residual_value, training=training)
         return x
 
     def get_config(self):
@@ -109,7 +103,7 @@ class B_block(keras.Model):
 
 
 
-def get_jasperdr(input_dim, output_dim,
+def get_jasper(input_dim, output_dim,
               is_mixed_precision=False,
               tflite_version=False,
               num_b_block_repeats=3,
@@ -157,18 +151,15 @@ def get_jasperdr(input_dim, output_dim,
         x = layers.ReLU(name='RELU-1')(x)
 
         block_idx = 1
-        res_inputs = []
         for kernel_size, n_channels in zip(
                 b_block_kernel_sizes, b_block_num_channels):
             for bk in range(num_b_block_repeats):
-                res_inputs = res_inputs + [x]
                 x = B_block(
                     kernel_size, n_channels, 
                     num_small_blocks, 
-                    len(res_inputs),
                     f'B-{block_idx}',
                     use_biases=use_biases, 
-                    use_batchnorms=use_batchnorms)(x, res_inputs)
+                    use_batchnorms=use_batchnorms)(x)
                 block_idx += 1
                 
         # First final layer
@@ -197,134 +188,3 @@ def get_jasperdr(input_dim, output_dim,
 
 
 QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
-
-
-def load_nvidia_jasperdr(
-        enc_path="./data/JasperEncoder_3-STEP-218410.pt",
-        dec_path="./data/JasperDecoderForCTC_4-STEP-218410.pt",
-        use_biases=False):
-    """
-    The weights for Quartznet model (English)
-    can be downloaded with the following command:
-    curl -LO https://api.ngc.nvidia.com/v2/models/nvidia/quartznet15x5/versions/2/files/quartznet15x5/JasperDecoderForCTC-STEP-247400.pt
-    curl -LO https://api.ngc.nvidia.com/v2/models/nvidia/quartznet15x5/versions/2/files/quartznet15x5/JasperEncoder-STEP-247400.pt
-
-    pass paths to these files as decoder and encoder paths
-    """
-    import torch
-    model = get_jasperdr(input_dim=64, output_dim=29,
-                          is_mixed_precision=False,
-                          tflite_version=False,
-                          num_b_block_repeats=2,
-                          b_block_kernel_sizes=(11, 13, 17, 21, 25),
-                          b_block_num_channels=(256, 384, 512, 640, 768),
-                          num_small_blocks=5,
-                          use_biases=False,
-                          use_batchnorms=True,
-                          random_state=1)
-
-    enc = torch.load(enc_path, map_location=torch.device('cpu'))
-    dec = torch.load(dec_path, map_location=torch.device('cpu'))
-
-    # First encoder layer
-    conv_1 = model.get_layer(name='conv_1')
-    new_weights = [
-        enc['encoder.0.conv.0.weight'].cpu().permute(2, 1, 0).numpy()]
-    conv_1.set_weights(new_weights)
-    BN_1 = model.get_layer(name='BN-1')
-    BN_1.set_weights([
-        enc['encoder.0.conv.1.weight'].cpu().numpy(),
-        enc['encoder.0.conv.1.bias'].cpu().numpy(),
-        enc['encoder.0.conv.1.running_mean'].cpu().numpy(),
-        enc['encoder.0.conv.1.running_var'].cpu().numpy()
-    ])
-
-    for i in range(1, 11):
-        layer_name = f'B-{i}'
-        b_block = model.get_layer(name=layer_name)
-        new_weights = [
-            enc[(f'encoder.{i}.conv.0.weight')].cpu().permute(
-                2, 1, 0).numpy(),
-            enc[(f'encoder.{i}.conv.1.weight')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.1.bias')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.4.weight')].cpu().permute(
-                2, 1, 0).numpy(),
-            enc[(f'encoder.{i}.conv.5.weight')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.5.bias')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.8.weight')].cpu().permute(
-                2, 1, 0).numpy(),
-            enc[(f'encoder.{i}.conv.9.weight')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.9.bias')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.12.weight')].cpu().permute(
-                2, 1, 0).numpy(),
-            enc[(f'encoder.{i}.conv.13.weight')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.13.bias')].cpu().numpy(),
-
-            enc[(f'encoder.{i}.conv.1.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.1.running_var')].cpu().numpy(),
-
-            enc[(f'encoder.{i}.conv.5.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.5.running_var')].cpu().numpy(),
-
-            enc[(f'encoder.{i}.conv.9.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.9.running_var')].cpu().numpy(),
-
-            enc[(f'encoder.{i}.conv.13.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.13.running_var')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.16.weight')].cpu().permute(2, 1, 0).numpy(),
-            enc[(f'encoder.{i}.conv.17.weight')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.17.bias')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.17.running_mean')].cpu().numpy(),
-            enc[(f'encoder.{i}.conv.17.running_var')].cpu().numpy()]
-            
-        for j in range(i):
-            new_weights.extend([
-                enc[(f'encoder.{i}.res.{j}.0.weight')].cpu().permute(
-                    2, 1, 0).numpy()
-            ])
-            
-        for j in range(i):
-            new_weights.extend([
-                enc[(f'encoder.{i}.res.{j}.1.weight')].cpu().numpy(),
-                enc[(f'encoder.{i}.res.{j}.1.bias')].cpu().numpy(),
-                enc[(f'encoder.{i}.res.{j}.1.running_mean')].cpu().numpy(),
-                enc[(f'encoder.{i}.res.{j}.1.running_var')].cpu().numpy()
-            ])
-        
-        b_block.set_weights(new_weights)
-
-    # First final layer
-    conv_2 = model.get_layer(name='conv_2')
-    new_weights = [
-        enc['encoder.11.conv.0.weight'].cpu().permute(
-            2, 1, 0).numpy()]
-    conv_2.set_weights(new_weights)
-
-    BN_2 = model.get_layer(name='BN-2')
-    BN_2.set_weights([
-        enc['encoder.11.conv.1.weight'].cpu().numpy(),
-        enc['encoder.11.conv.1.bias'].cpu().numpy(),
-        enc['encoder.11.conv.1.running_mean'].cpu().numpy(),
-        enc['encoder.11.conv.1.running_var'].cpu().numpy()
-    ])
-
-    # Second final layer
-    conv_3 = model.get_layer(name='conv_3')
-    new_weights = [
-        enc['encoder.12.conv.0.weight'].cpu().permute(2, 1, 0).numpy()]
-    conv_3.set_weights(new_weights)
-    BN_3 = model.get_layer(name='BN-3')
-    BN_3.set_weights([
-        enc['encoder.12.conv.1.weight'].cpu().numpy(),
-        enc['encoder.12.conv.1.bias'].cpu().numpy(),
-        enc['encoder.12.conv.1.running_mean'].cpu().numpy(),
-        enc['encoder.12.conv.1.running_var'].cpu().numpy()
-    ])
-
-    # Third final layer
-    conv_4 = model.get_layer(name='conv_4')
-    conv_4.set_weights(
-        [dec['decoder_layers.0.weight'].cpu().permute(
-            2, 1, 0).numpy(),
-         dec['decoder_layers.0.bias'].cpu().numpy()])
-    return model
