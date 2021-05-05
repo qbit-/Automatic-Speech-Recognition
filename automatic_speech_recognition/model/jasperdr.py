@@ -29,11 +29,12 @@ class Small_block(keras.Model):
 
     def call(self, input_tensor, res_values, training=False):
         x = self.conv(input_tensor)
-        if self.bn is not None: x = self.bn(x, training=training)
+        if self.bn is not None: 
+            x = self.bn(x, training=training)
         if self.residual:
-            for res_v in res_values:
-                x += res_v
+            x = tf.keras.layers.add([x] + res_values)
         x = self.relu(x)
+        tf.debugging.assert_all_finite(x, f'nan after {self.layer_name}', name=None)
         return x
 
     def get_config(self):
@@ -86,6 +87,7 @@ class B_block(keras.Model):
         for i in range(len(self.small_blocks)):
             x = self.small_blocks[i](x, None, training=training)
         x = self.res_block(x, res_values, training=training)
+        tf.debugging.assert_all_finite(x, f'nan after {self.layer_name}', name=None)
         return x
 
     def get_config(self):
@@ -204,11 +206,6 @@ def load_nvidia_jasperdr(
         dec_path="./data/JasperDecoderForCTC_4-STEP-218410.pt",
         use_biases=False):
     """
-    The weights for Quartznet model (English)
-    can be downloaded with the following command:
-    curl -LO https://api.ngc.nvidia.com/v2/models/nvidia/quartznet15x5/versions/2/files/quartznet15x5/JasperDecoderForCTC-STEP-247400.pt
-    curl -LO https://api.ngc.nvidia.com/v2/models/nvidia/quartznet15x5/versions/2/files/quartznet15x5/JasperEncoder-STEP-247400.pt
-
     pass paths to these files as decoder and encoder paths
     """
     import torch
@@ -228,9 +225,8 @@ def load_nvidia_jasperdr(
 
     # First encoder layer
     conv_1 = model.get_layer(name='conv_1')
-    new_weights = [
-        enc['encoder.0.conv.0.weight'].cpu().permute(2, 1, 0).numpy()]
-    conv_1.set_weights(new_weights)
+    conv_1.set_weights([
+        enc['encoder.0.conv.0.weight'].cpu().permute(2, 1, 0).numpy()])
     BN_1 = model.get_layer(name='BN-1')
     BN_1.set_weights([
         enc['encoder.0.conv.1.weight'].cpu().numpy(),
@@ -277,16 +273,21 @@ def load_nvidia_jasperdr(
             enc[(f'encoder.{i}.conv.17.running_mean')].cpu().numpy(),
             enc[(f'encoder.{i}.conv.17.running_var')].cpu().numpy()]
             
+        # 1x1 convs of inputs from previous blocks
         for j in range(i):
             new_weights.extend([
                 enc[(f'encoder.{i}.res.{j}.0.weight')].cpu().permute(
                     2, 1, 0).numpy()
             ])
             
+        # batchnorms of 1x1 convs of inputs from previous blocks
         for j in range(i):
             new_weights.extend([
                 enc[(f'encoder.{i}.res.{j}.1.weight')].cpu().numpy(),
                 enc[(f'encoder.{i}.res.{j}.1.bias')].cpu().numpy(),
+            ])
+        for j in range(i):
+            new_weights.extend([
                 enc[(f'encoder.{i}.res.{j}.1.running_mean')].cpu().numpy(),
                 enc[(f'encoder.{i}.res.{j}.1.running_var')].cpu().numpy()
             ])
@@ -295,11 +296,9 @@ def load_nvidia_jasperdr(
 
     # First final layer
     conv_2 = model.get_layer(name='conv_2')
-    new_weights = [
+    conv_2.set_weights([
         enc['encoder.11.conv.0.weight'].cpu().permute(
-            2, 1, 0).numpy()]
-    conv_2.set_weights(new_weights)
-
+            2, 1, 0).numpy()])
     BN_2 = model.get_layer(name='BN-2')
     BN_2.set_weights([
         enc['encoder.11.conv.1.weight'].cpu().numpy(),
@@ -310,9 +309,8 @@ def load_nvidia_jasperdr(
 
     # Second final layer
     conv_3 = model.get_layer(name='conv_3')
-    new_weights = [
-        enc['encoder.12.conv.0.weight'].cpu().permute(2, 1, 0).numpy()]
-    conv_3.set_weights(new_weights)
+    conv_3.set_weights([
+        enc['encoder.12.conv.0.weight'].cpu().permute(2, 1, 0).numpy()])
     BN_3 = model.get_layer(name='BN-3')
     BN_3.set_weights([
         enc['encoder.12.conv.1.weight'].cpu().numpy(),
@@ -327,4 +325,5 @@ def load_nvidia_jasperdr(
         [dec['decoder_layers.0.weight'].cpu().permute(
             2, 1, 0).numpy(),
          dec['decoder_layers.0.bias'].cpu().numpy()])
+    
     return model
