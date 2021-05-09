@@ -76,6 +76,7 @@ class B_block(keras.Model):
         self.kernel_size = kernel_size
         self.filters = filters
         self.n_small_blocks = n_small_blocks
+        self.num_res_connections = num_res_connections
         self.layer_name = layer_name
         self.use_biases = use_biases
         self.use_batchnorms = use_batchnorms
@@ -97,6 +98,7 @@ class B_block(keras.Model):
                 'kernel_size': self.kernel_size,
                 'filters': self.filters,
                 'n_small_blocks': self.n_small_blocks,
+                'num_res_connections': self.num_res_connections,
                 'layer_name': self.layer_name,
                 'use_biases': self.use_biases,
                 'use_batchnorms': self.use_batchnorms
@@ -121,6 +123,7 @@ def get_jasperdr(input_dim, output_dim,
               use_biases=False,
               use_batchnorms=True,
               use_mask=False,
+              fixed_batch_size=None,
               random_state=1) -> keras.Model:
     """
     Parameters
@@ -138,7 +141,7 @@ def get_jasperdr(input_dim, output_dim,
 
     max_seq_length = None
     if tflite_version:
-        max_seq_length = 5
+        max_seq_length = 10
 
     if is_mixed_precision:
         policy = mixed_precision.Policy('mixed_float16')
@@ -148,7 +151,13 @@ def get_jasperdr(input_dim, output_dim,
     tf.random.set_seed(random_state)
 
     with tf.device('/cpu:0'):
-        input_tensor = layers.Input([max_seq_length, input_dim], name='X')
+        if fixed_batch_size is None:
+            input_tensor = layers.Input(shape=[max_seq_length, input_dim], 
+                                        name='X')
+        else:
+            input_tensor = layers.Input(shape=[max_seq_length, input_dim], 
+                                        name='X', 
+                                        batch_size=fixed_batch_size)
         x = tf.identity(input_tensor)
         if use_mask: x = layers.Masking()(x)
         # First encoder layer
@@ -204,20 +213,23 @@ QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
 def load_nvidia_jasperdr(
         enc_path="./data/JasperEncoder_3-STEP-218410.pt",
         dec_path="./data/JasperDecoderForCTC_4-STEP-218410.pt",
-        use_biases=False):
+        use_biases=False,
+        tflite_version=False,
+        fixed_batch_size=None):
     """
     pass paths to these files as decoder and encoder paths
     """
     import torch
     model = get_jasperdr(input_dim=64, output_dim=29,
                           is_mixed_precision=False,
-                          tflite_version=False,
+                          tflite_version=tflite_version,
                           num_b_block_repeats=2,
                           b_block_kernel_sizes=(11, 13, 17, 21, 25),
                           b_block_num_channels=(256, 384, 512, 640, 768),
                           num_small_blocks=5,
                           use_biases=False,
                           use_batchnorms=True,
+                          fixed_batch_size=fixed_batch_size,
                           random_state=1)
 
     enc = torch.load(enc_path, map_location=torch.device('cpu'))
