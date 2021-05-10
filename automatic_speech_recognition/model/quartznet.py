@@ -106,7 +106,7 @@ class B_block(keras.Model):
 
 def get_quartznet(input_dim, output_dim,
                   is_mixed_precision=False,
-                  tflite_version=False,
+                  fixed_sequence_size=None,
                   num_b_block_repeats=3,
                   b_block_kernel_sizes=(33, 39, 51, 63, 75),
                   b_block_num_channels=(256, 256, 512, 512, 512),
@@ -114,6 +114,7 @@ def get_quartznet(input_dim, output_dim,
                   use_biases=False,
                   use_batchnorms=True,
                   use_mask=False,
+                  fixed_batch_size=None,
                   random_state=1) -> keras.Model:
     """
     Parameters
@@ -121,11 +122,17 @@ def get_quartznet(input_dim, output_dim,
     input_dim: input feature length
     output_dim: output feature length
     is_mixed_precision: if mixed precision model is needed
-    tflite_version: if export to tflite is needed
+    fixed_sequence_size: int, default None. If the length of sequence has to be fixed.
     num_b_block_repeats: 1 is 5x5 quartznet, 2 is 10x5, 3 is 15x5
     b_block_kernel_sizes: iterable, kernel size of each b block
     b_block_num_channels: iterable, number of channels of each b block
-    """
+    num_small_blocks: int, number of conv blocks inside 1 residual block
+    use_biases: if biases are used with convolutions
+    use_batchnorms: if batchnorms are inserted after each residual block
+    use_mask: if mask layer is used
+    fixed_batch_size: int, default None. If the model will have fixed batch size
+    random_state: int, state used for weight initialization
+     """
     assert len(b_block_kernel_sizes) == len(b_block_num_channels), \
         "Number of kernel sizes not equal the number of channel sizes"
 
@@ -141,7 +148,8 @@ def get_quartznet(input_dim, output_dim,
     tf.random.set_seed(random_state)
 
     with tf.device('/cpu:0'):
-        input_tensor = layers.Input([max_seq_length, input_dim], name='X')
+        input_tensor = layers.Input([fixed_sequence_size, input_dim], name='X',
+                                    batch_size=fixed_batch_size)
         x = tf.identity(input_tensor)
         if use_mask: x = layers.Masking()(x)
         # First encoder layer
