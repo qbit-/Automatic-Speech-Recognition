@@ -14,3 +14,7 @@
 # Specific masks for the notebooks folder
 notebooks/models/*
 notebooks/profiling_output/*
+notebooks/data/*
+notebooks/layer_activations/*
+*.npz
+*.npy

@@ -187,4 +187,3 @@ def get_jasper(input_dim, output_dim,
     return model
 
 
-QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}

@@ -54,7 +54,7 @@ class Small_block(keras.Model):
 
 class B_block(keras.Model):
     """
-    Base residual block of the Quartznet model
+    Base residual block of the Jasper model
     """
     def __init__(self, kernel_size, filters, n_small_blocks, num_res_connections, layer_name,
                  use_biases=False, use_batchnorms=True):
@@ -205,9 +205,6 @@ def get_jasperdr(input_dim, output_dim,
         mixed_precision.set_policy(policy)
 
     return model
-
-
-QUARTZNET_LAYERS = {'Small_block': Small_block, 'B_block': B_block}
 
 
 def load_nvidia_jasperdr(
