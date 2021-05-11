@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.10.2
+#       jupytext_version: 1.11.1
 #   kernelspec:
-#     display_name: conda_asr_project
+#     display_name: asr
 #     language: python
-#     name: conda_asr_ptoject
+#     name: asr
 # ---
 
 # %load_ext autoreload
@@ -32,7 +32,10 @@ import math
 from tqdm import tqdm
 import pandas as pd
 from copy import deepcopy
+import requests
 import matplotlib.pyplot as plt
+from zipfile import ZipFile
+from tarfile import TarFile
 
 from tensorflow.keras.layers import BatchNormalization, Conv1D, SeparableConv1D
 from tensorflow.python.keras.layers.convolutional import SeparableConv
@@ -64,6 +67,32 @@ def evaluate_model(model, pipeline, index_file, batch_size=1):
     return {'wer': wer, 'cer': cer}
 
 
+def download(url, filename):
+    with open(filename, 'wb') as f:
+        response = requests.get(url, stream=True)
+        total = response.headers.get('content-length')
+
+        if total is None:
+            f.write(response.content)
+        else:
+            downloaded = 0
+            chunk_size = max(int(int(total)/100), 1024*1024)
+            total_chunks = int(int(total) / chunk_size)
+            
+            for data in tqdm(response.iter_content(chunk_size=chunk_size), total=total_chunks):
+                downloaded += len(data)
+                f.write(data)
+
+
+def extract_zip_files(zip_filename, destination, keep_files=False):
+    os.makedirs(destination, exist_ok=True)
+    with ZipFile(zip_filename, 'r') as zfp:
+        zfp.extractall(destination)
+    
+    if not keep_files:
+        os.remove(zip_filename)
+
+
 alphabet = asr.text.Alphabet(lang='en')
 features_extractor = asr.features.FilterBanks(
     features_num=64,
@@ -80,19 +109,23 @@ optimizer = tf.optimizers.Adam(
 )
 decoder = asr.decoder.GreedyDecoder()
 
-model = get_jasperdr(input_dim=64, output_dim=29,
-                      is_mixed_precision=False,
-                      tflite_version=False,
-                      num_b_block_repeats=2,
-                      b_block_kernel_sizes=(11, 13, 17, 21, 25),
-                      b_block_num_channels=(256, 384, 512, 640, 768),
-                      num_small_blocks=5,
-                      use_biases=False,
-                      use_batchnorms=True,
-                      fixed_batch_size=10,
-                      random_state=1)
+# ### Basic test
 
+model = get_jasperdr(input_dim=64, output_dim=29,
+                     is_mixed_precision=False,
+                     fixed_sequence_size=None,
+                     num_b_block_repeats=2,
+                     b_block_kernel_sizes=(11, 13, 17, 21, 25),
+                     b_block_num_channels=(256, 384, 512, 640, 768),
+                     num_small_blocks=5,
+                     use_biases=False,
+                     use_batchnorms=True,
+                     fixed_batch_size=None,
+                     random_state=1)
+
+# + tags=[]
 model.input
+# -
 
 dataset = asr.dataset.Audio.from_csv('./data/libri-dev-clean-index.csv', batch_size=3)
 for audio, transcripts in tqdm(dataset, position=0):
@@ -103,13 +136,24 @@ for audio, transcripts in tqdm(dataset, position=0):
     print(predictions)
     break
 
+# ### Test with pretrained weights
+
+download('https://api.ngc.nvidia.com/v2/models/nvidia/jaspernet10x5dr/versions/1/zip',
+         'data/jaspernet10x5dr.zip')
+
+
+
+extract_zip_files('data/jaspernet10x5dr.zip', 'data/', keep_files=False)
+
+
+
 model = load_nvidia_jasperdr(
     './data/jaspernet10x5dr/JasperEncoder_3-STEP-218410.pt',
     './data/jaspernet10x5dr/JasperDecoderForCTC_4-STEP-218410.pt',
-    tflite_version=True,
+    fixed_sequence_size=None,
     fixed_batch_size=4)
 
-dataset = asr.dataset.Audio.from_csv('./data/libri-small-clean-index.csv', batch_size=3)
+dataset = asr.dataset.Audio.from_csv('./data/libri-dev-clean-index.csv', batch_size=3)
 for audio, transcripts in tqdm(dataset, position=0):
     features, _ = features_extractor(audio)
     x = model.predict(features)
@@ -117,6 +161,8 @@ for audio, transcripts in tqdm(dataset, position=0):
     predictions = alphabet.get_batch_transcripts(decoded_labels)
     print(predictions)
     break
+
+# ### Evaluate wer on LibriSpeech dev-clean dataset
 
 # %%time
 tf.get_logger().setLevel('ERROR')
@@ -129,6 +175,8 @@ pipeline = asr.pipeline.CTCPipeline(
 )
 evaluate_model(model, pipeline, './data/libri-dev-clean-index.csv', batch_size=1)
 
+# ### Evaluate wer on LibriSpeech test-clean dataset
+
 # %%time
 tf.get_logger().setLevel('ERROR')
 warnings.filterwarnings("ignore")
@@ -136,12 +184,11 @@ model = load_nvidia_jasperdr(
     './data/jaspernet10x5dr/JasperEncoder_3-STEP-218410.pt',
     './data/jaspernet10x5dr/JasperDecoderForCTC_4-STEP-218410.pt')
 pipeline = asr.pipeline.CTCPipeline(
-    alphabet, features_extractor, model, optimizer, decoder
+   alphabet, features_extractor, model, optimizer, decoder
 )
 evaluate_model(model, pipeline, './data/libri-test-clean-index.csv', batch_size=1)
 
-# + active=""
-#
+# ### Export model to tflite format
 
 # +
 import os, sys
@@ -155,6 +202,12 @@ from device_profiling import DEFAULT_PROF_CONFIG as config
 
 # %%time
 custom_objects = {"B_block": B_block, "Small_block": Small_block}
-export_model(model, 'models/jasper/jasper_dr_10x5_test.tflite', custom_objects=custom_objects)
+export_model(model, 'data/jaspernet10x5dr/jasper_dr_10x5.tflite', custom_objects=custom_objects)
+
+
+
+
+
+
 
 

@@ -245,12 +245,17 @@ def main(ds_name: str, index_dir: str, data_dir: str,
         ds_name, index_dir, data_dir, n_jobs=n_jobs)
     if augment:
         index_data = extend_index_for_augmentation(index_data)
-    index_data.to_csv(os.path.join(index_dir, f'libri-{ds_name}-index.csv'))
+    aug_suffix = '-aug' if augment else ''
+    index_data.to_csv(os.path.join(index_dir, f'libri-{ds_name}{aug_suffix}-index.csv'))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Prepare LibriSpeech data')
+        description='Prepare LibriSpeech data\n'
+            'example:\n'
+            'python prepare_librispeech.py --type dev-clean --data_dir /where/clips/folder/will/be \\ \n'
+            '--index_dir /where/index/will/be/placed/and/used --augment=true',
+    )
     parser.add_argument('--type', type=str,
                         help='which dataset to download',
                         default='dev-clean',

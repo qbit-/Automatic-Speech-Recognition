@@ -11,3 +11,4 @@ dependencies:
       - librosa==0.7.2
       - numba==0.48
       - pydub==0.24.1
+      - hydra-core==1.0.6

@@ -218,7 +218,8 @@ def main(ds_name: str, index_dir: str, data_dir: str,
         raw_index, index_dir, data_dir)
     if augment:
         index_data = extend_index_for_augmentation(index_data)
-    index_data.to_csv(os.path.join(index_dir, f'cv-{ds_name}-index.csv'))
+    aug_suffix = '-aug' if augment else ''  
+    index_data.to_csv(os.path.join(index_dir, f'cv-{ds_name}{aug_suffix}-index.csv'))
 
 
 if __name__ == '__main__':
@@ -233,10 +234,10 @@ if __name__ == '__main__':
                         help='which dataset to use for index',
                         default='dev',
                         choices=['train', 'dev', 'test', 'validated', 'invalidated', 'other'])
-    parser.add_argument('--data-dir', type=str,
+    parser.add_argument('--data_dir', type=str,
                         help='where to place final dataset',
                         default='.')
-    parser.add_argument('--index-dir', type=str,
+    parser.add_argument('--index_dir', type=str,
                         help='path relative to which all'
                              ' audio paths will be indexed',
                         default='.')
@@ -246,14 +247,14 @@ if __name__ == '__main__':
     parser.add_argument('--url', type=str,
                         help='optional url to download Common Voice',
                         default=None)
-    parser.add_argument('--keep-original', action='store_true',
+    parser.add_argument('--keep_original', action='store_true',
                         help='keep original mp3 audiofiles')
-    parser.add_argument('--force-overwrite', action='store_true',
+    parser.add_argument('--force_overwrite', action='store_true',
                         help='force overwriting audio files during'
                         ' dataset preparation (slower)')
     parser.add_argument('--skip-transcode', action='store_true',
                         help='skip converting mp3 to wav (faster)')
-    parser.add_argument('--n-jobs', type=int,
+    parser.add_argument('--n_jobs', type=int,
                         help='number of parallel Joblib processes',
                         default=4)
 
