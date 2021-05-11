@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.1
+#       jupytext_version: 1.10.2
 #   kernelspec:
-#     display_name: asr
+#     display_name: conda_asr_project
 #     language: python
-#     name: asr
+#     name: conda_asr_ptoject
 # ---
 
 # %load_ext autoreload
@@ -84,25 +84,13 @@ def download(url, filename):
                 f.write(data)
 
 
-def extract_nemo_files(zip_filename, destination, keep_files=False):
+def extract_zip_files(zip_filename, destination, keep_files=False):
     os.makedirs(destination, exist_ok=True)
     with ZipFile(zip_filename, 'r') as zfp:
         zfp.extractall(destination)
-    nemo_filename = os.path.join(destination, 'JasperNet10x5-En-Base.nemo')
-    tar_filename = nemo_filename.rsplit('.')[0] + '.tar'
-    
-    os.rename(nemo_filename, tar_filename)
-    with TarFile.open(tar_filename, 'r:gz') as zfp:
-        for target in ['JasperDecoderForCTC.pt', 'JasperEncoder.pt']:
-            for tarinfo in zfp.getmembers():
-                if tarinfo.name.endswith(target):
-                    tarinfo.name = target
-                    zfp.extract(tarinfo, destination)
-                    break
     
     if not keep_files:
         os.remove(zip_filename)
-        os.remove(tar_filename)
 
 
 alphabet = asr.text.Alphabet(lang='en')
@@ -135,7 +123,7 @@ model = get_jasperdr(input_dim=64, output_dim=29,
                      fixed_batch_size=None,
                      random_state=1)
 
-# + jupyter={"outputs_hidden": true} tags=[]
+# + tags=[]
 model.input
 # -
 
@@ -150,15 +138,12 @@ for audio, transcripts in tqdm(dataset, position=0):
 
 # ### Test with pretrained weights
 
-download('https://api.ngc.nvidia.com/v2/models/nvidia/multidataset_jasper10x5dr/versions/5/zip',
-         'data/multidataset_jasper10x5dr_5.zip')
-
 download('https://api.ngc.nvidia.com/v2/models/nvidia/jaspernet10x5dr/versions/1/zip',
-         'data/jaspernet10x5dr_1.zip')
+         'data/jaspernet10x5dr.zip')
 
 
 
-extract_nemo_files('data/multidataset_jasper10x5dr_5.zip', 'data/jaspernet10x5dr', keep_files=False)
+extract_zip_files('data/jaspernet10x5dr.zip', 'data/', keep_files=False)
 
 
 
@@ -168,7 +153,7 @@ model = load_nvidia_jasperdr(
     fixed_sequence_size=None,
     fixed_batch_size=4)
 
-dataset = asr.dataset.Audio.from_csv('./data/libri-test-clean-index.csv', batch_size=3)
+dataset = asr.dataset.Audio.from_csv('./data/libri-dev-clean-index.csv', batch_size=3)
 for audio, transcripts in tqdm(dataset, position=0):
     features, _ = features_extractor(audio)
     x = model.predict(features)
@@ -176,6 +161,8 @@ for audio, transcripts in tqdm(dataset, position=0):
     predictions = alphabet.get_batch_transcripts(decoded_labels)
     print(predictions)
     break
+
+# ### Evaluate wer on LibriSpeech dev-clean dataset
 
 # %%time
 tf.get_logger().setLevel('ERROR')
@@ -188,6 +175,8 @@ model = load_nvidia_jasperdr(
 )
 evaluate_model(model, pipeline, './data/libri-dev-clean-index.csv', batch_size=1)
 
+# ### Evaluate wer on LibriSpeech test-clean dataset
+
 # %%time
 tf.get_logger().setLevel('ERROR')
 warnings.filterwarnings("ignore")
@@ -199,8 +188,7 @@ pipeline = asr.pipeline.CTCPipeline(
 )
 evaluate_model(model, pipeline, './data/libri-test-clean-index.csv', batch_size=1)
 
-# + active=""
-#
+# ### Export model to tflite format
 
 # +
 import os, sys
@@ -214,7 +202,7 @@ from device_profiling import DEFAULT_PROF_CONFIG as config
 
 # %%time
 custom_objects = {"B_block": B_block, "Small_block": Small_block}
-export_model(model, 'data/jaspernet10x5dr/jasper_dr_10x5_test.tflite', custom_objects=custom_objects)
+export_model(model, 'data/jaspernet10x5dr/jasper_dr_10x5.tflite', custom_objects=custom_objects)
 
 
 
