@@ -135,7 +135,9 @@ model = get_jasperdr(input_dim=64, output_dim=29,
                      fixed_batch_size=None,
                      random_state=1)
 
+# + jupyter={"outputs_hidden": true} tags=[]
 model.input
+# -
 
 dataset = asr.dataset.Audio.from_csv('./data/libri-dev-clean-index.csv', batch_size=3)
 for audio, transcripts in tqdm(dataset, position=0):
@@ -148,56 +150,54 @@ for audio, transcripts in tqdm(dataset, position=0):
 
 # ### Test with pretrained weights
 
-# +
-#download('https://api.ngc.nvidia.com/v2/models/nvidia/multidataset_jasper10x5dr/versions/5/zip',
-#         'data/multidataset_jasper10x5dr_5.zip')
+download('https://api.ngc.nvidia.com/v2/models/nvidia/multidataset_jasper10x5dr/versions/5/zip',
+         'data/multidataset_jasper10x5dr_5.zip')
 
-# +
-#extract_nemo_files('data/multidataset_jasper10x5dr_5.zip', 'data/jaspernet10x5dr', keep_files=False)
-# -
+download('https://api.ngc.nvidia.com/v2/models/nvidia/jaspernet10x5dr/versions/1/zip',
+         'data/jaspernet10x5dr_1.zip')
 
 
 
-# +
-#model = load_nvidia_jasperdr(
-#    './data/jaspernet10x5dr/JasperEncoder.pt',
-#    './data/jaspernet10x5dr/JasperDecoderForCTC.pt',
-#    tflite_version=True,
-#    fixed_batch_size=4)
+extract_nemo_files('data/multidataset_jasper10x5dr_5.zip', 'data/jaspernet10x5dr', keep_files=False)
 
-# +
-#dataset = asr.dataset.Audio.from_csv('./data/libri-test-clean-index.csv', batch_size=3)
-#for audio, transcripts in tqdm(dataset, position=0):
-#    features, _ = features_extractor(audio)
-#    x = model.predict(features)
-#    decoded_labels = decoder(x)
-#    predictions = alphabet.get_batch_transcripts(decoded_labels)
-#    print(predictions)
-#    break
 
-# +
-# #%%time
-#tf.get_logger().setLevel('ERROR')
-#warnings.filterwarnings("ignore")
-#model = load_nvidia_jasperdr(
-#    './data/jaspernet10x5dr/JasperEncoder.pt',
-#    './data/jaspernet10x5dr/JasperDecoderForCTC.pt')
-#pipeline = asr.pipeline.CTCPipeline(
-#    alphabet, features_extractor, model, optimizer, decoder
-#)
-#evaluate_model(model, pipeline, './data/libri-dev-clean-index.csv', batch_size=1)
 
-# +
-# #%%time
-#tf.get_logger().setLevel('ERROR')
-#warnings.filterwarnings("ignore")
-#model = load_nvidia_jasperdr(
-#    './data/jaspernet10x5dr/JasperEncoder.pt',
-#    './data/jaspernet10x5dr/JasperDecoderForCTC.pt')
-#pipeline = asr.pipeline.CTCPipeline(
-#    alphabet, features_extractor, model, optimizer, decoder
-#)
-#evaluate_model(model, pipeline, './data/libri-test-clean-index.csv', batch_size=1)
+model = load_nvidia_jasperdr(
+    './data/jaspernet10x5dr/JasperEncoder_3-STEP-218410.pt',
+    './data/jaspernet10x5dr/JasperDecoderForCTC_4-STEP-218410.pt',
+    fixed_sequence_size=None,
+    fixed_batch_size=4)
+
+dataset = asr.dataset.Audio.from_csv('./data/libri-test-clean-index.csv', batch_size=3)
+for audio, transcripts in tqdm(dataset, position=0):
+    features, _ = features_extractor(audio)
+    x = model.predict(features)
+    decoded_labels = decoder(x)
+    predictions = alphabet.get_batch_transcripts(decoded_labels)
+    print(predictions)
+    break
+
+# %%time
+tf.get_logger().setLevel('ERROR')
+warnings.filterwarnings("ignore")
+model = load_nvidia_jasperdr(
+    './data/jaspernet10x5dr/JasperEncoder.pt',
+    './data/jaspernet10x5dr/JasperDecoderForCTC.pt')
+    pipeline = asr.pipeline.CTCPipeline(
+    alphabet, features_extractor, model, optimizer, decoder
+)
+evaluate_model(model, pipeline, './data/libri-dev-clean-index.csv', batch_size=1)
+
+# %%time
+tf.get_logger().setLevel('ERROR')
+warnings.filterwarnings("ignore")
+model = load_nvidia_jasperdr(
+    './data/jaspernet10x5dr/JasperEncoder.pt',
+    './data/jaspernet10x5dr/JasperDecoderForCTC.pt')
+pipeline = asr.pipeline.CTCPipeline(
+   alphabet, features_extractor, model, optimizer, decoder
+)
+evaluate_model(model, pipeline, './data/libri-test-clean-index.csv', batch_size=1)
 
 # + active=""
 #
